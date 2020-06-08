@@ -1,0 +1,22 @@
+# antlr4 fils
+*.java
+*.interp
+*.tokens
+*.class
+
+# binary files
+*.png
+*.jpg
+*.bmp
+*.gif
+*.dds
+
+*.pdf
+
+*.mp4
+
+# directories
+resources/
+bin/
+lib/
+build/

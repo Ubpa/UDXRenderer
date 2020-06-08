@@ -105,7 +105,7 @@ private:
 	//std::unordered_map<std::string, std::unique_ptr<Ubpa::DX12::MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
-	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
+	//std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
@@ -598,8 +598,12 @@ void CrateApp::BuildDescriptorHeaps()
 
 void CrateApp::BuildShadersAndInputLayout()
 {
-	mShaders["standardVS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["opaquePS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
+	//mShaders["standardVS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
+	//mShaders["opaquePS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
+	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("standardVS",
+		L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
+	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("opaquePS",
+		L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
 	
     mInputLayout =
     {
@@ -682,13 +686,13 @@ void CrateApp::BuildPSOs()
 	opaquePsoDesc.pRootSignature = mRootSignature.Get();
 	opaquePsoDesc.VS = 
 	{ 
-		reinterpret_cast<BYTE*>(mShaders["standardVS"]->GetBufferPointer()), 
-		mShaders["standardVS"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferPointer()),
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferSize()
 	};
 	opaquePsoDesc.PS = 
 	{ 
-		reinterpret_cast<BYTE*>(mShaders["opaquePS"]->GetBufferPointer()),
-		mShaders["opaquePS"]->GetBufferSize()
+		reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferPointer()),
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferSize()
 	};
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);

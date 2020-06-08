@@ -30,9 +30,26 @@ namespace Ubpa {
 			const void* vb_data, UINT vb_count, UINT vb_stride,
 			const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format);
 
+		// [summary]
+		// compile shader file to bytecode
+		// [arguments]
+		// - defines: marco array, end with {NULL, NULL}
+		// - - e.g. #define zero 0 <-> D3D_SHADER_MACRO Shader_Macros[] = { "zero", "0", NULL, NULL };
+		// - entrypoint: begin function name, like 'main'
+		// - target: e.g. cs/ds/gs/hs/ps/vs + _5_ + 0/1
+		// [ref] https://docs.microsoft.com/en-us/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dcompilefromfile
+		ID3DBlob* RegisterShaderByteCode(
+			std::string name,
+			const std::wstring& filename,
+			const D3D_SHADER_MACRO* defines,
+			const std::string& entrypoint,
+			const std::string& target);
+
 		D3D12_GPU_DESCRIPTOR_HANDLE GetTextureGpuHandle(const std::string& name) const;
 
 		DX12::MeshGeometry& GetMeshGeometry(const std::string& name) const;
+
+		ID3DBlob* GetShaderByteCode(const std::string& name) const;
 
 	private:
 		struct Impl;

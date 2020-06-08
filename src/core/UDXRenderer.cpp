@@ -19,6 +19,7 @@ struct DXRenderer::Impl {
 
     std::unordered_map<std::string, Texture> textureMap;
     std::unordered_map<std::string, DX12::MeshGeometry> meshGeoMap;
+    std::unordered_map<std::string, ID3DBlob*> shaderByteCodeMap;
 };
 
 DXRenderer::DXRenderer()
@@ -122,4 +123,20 @@ DX12::MeshGeometry& DXRenderer::RegisterDynamicMeshGeometry(
 
 DX12::MeshGeometry& DXRenderer::GetMeshGeometry(const std::string& name) const {
     return pImpl->meshGeoMap.find(name)->second;
+}
+
+ID3DBlob* DXRenderer::RegisterShaderByteCode(
+    std::string name,
+    const std::wstring& filename,
+    const D3D_SHADER_MACRO* defines,
+    const std::string& entrypoint,
+    const std::string& target)
+{
+    auto shader = DX12::Util::CompileShader(filename, defines, entrypoint, target);
+    pImpl->shaderByteCodeMap.emplace(std::move(name), shader);
+    return shader;
+}
+
+ID3DBlob* DXRenderer::GetShaderByteCode(const std::string& name) const {
+    return pImpl->shaderByteCodeMap.find(name)->second;
 }

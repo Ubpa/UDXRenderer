@@ -2,6 +2,7 @@
 // CrateApp.cpp by Frank Luna (C) 2015 All Rights Reserved.
 //***************************************************************************************
 
+
 #include "../common/d3dApp.h"
 #include "../common/MathHelper.h"
 #include <UDX12/UploadBuffer.h>
@@ -78,7 +79,7 @@ private:
     void BuildRootSignature();
 	void BuildDescriptorHeaps();
     void BuildShadersAndInputLayout();
-    void BuildShapeGeometry(DirectX::ResourceUploadBatch&);
+    void BuildShapeGeometry();
     void BuildPSOs();
     void BuildFrameResources();
     void BuildMaterials();
@@ -148,13 +149,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
         if(!theApp.Initialize())
             return 0;
 
-        return theApp.Run();
+        int rst = theApp.Run();
+		Ubpa::DXRenderer::Instance().Release();
+		return rst;
     }
     catch(Ubpa::DX12::Util::Exception& e)
     {
         MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
         return 0;
     }
+
 }
 
 CrateApp::CrateApp(HINSTANCE hInstance)
@@ -173,6 +177,8 @@ bool CrateApp::Initialize()
     if(!D3DApp::Initialize())
         return false;
 
+	Ubpa::DXRenderer::Instance().Init(uDevice.raw.Get());
+
 	Ubpa::DX12::DescriptorHeapMngr::Instance().Init(uDevice.raw.Get(), 1024, 1024, 1024, 1024, 1024);
 
 	fgRsrcMngr.Init(uGCmdList, uDevice);
@@ -184,14 +190,13 @@ bool CrateApp::Initialize()
 	// so we have to query this information.
     mCbvSrvDescriptorSize = uDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	DirectX::ResourceUploadBatch upload(uDevice.raw.Get());
-	upload.Begin();
+	Ubpa::DXRenderer::Instance().GetUpload().Begin();
  
 	LoadTextures();
     BuildRootSignature();
 	BuildDescriptorHeaps();
     BuildShadersAndInputLayout();
-    BuildShapeGeometry(upload);
+    BuildShapeGeometry();
 	BuildMaterials();
     BuildRenderItems();
     BuildFrameResources();
@@ -201,7 +206,7 @@ bool CrateApp::Initialize()
     ThrowIfFailed(uGCmdList->Close());
 	uCmdQueue.Execute(uGCmdList.raw.Get());
 
-	upload.End(uCmdQueue.raw.Get());
+	Ubpa::DXRenderer::Instance().GetUpload().End(uCmdQueue.raw.Get());
 
     // Wait until initialization is complete.
     FlushCommandQueue();
@@ -511,14 +516,18 @@ void CrateApp::UpdateMainPassCB(const GameTimer& gt)
 
 void CrateApp::LoadTextures()
 {
-	auto woodCrateTex = std::make_unique<Texture>();
+	/*auto woodCrateTex = std::make_unique<Texture>();
 	woodCrateTex->Name = "woodCrateTex";
 	woodCrateTex->Filename = L"../data/textures/WoodCrate01.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(uDevice.raw.Get(),
 		uGCmdList.raw.Get(), woodCrateTex->Filename.c_str(),
 		woodCrateTex->Resource, woodCrateTex->UploadHeap));
  
-	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
+	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);*/
+	Ubpa::DXRenderer::Instance().RegisterDDSTextureFromFile(
+		Ubpa::DXRenderer::Instance().GetUpload(),
+		"woodCrateTex",
+		L"../data/textures/WoodCrate01.dds");
 }
 
 void CrateApp::BuildRootSignature()
@@ -573,17 +582,17 @@ void CrateApp::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(uDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));*/
 
-	mSrvDescriptorHeap = Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
+	//mSrvDescriptorHeap = Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
 
-	//
-	// Fill out the heap with actual descriptors.
-	//
-	/*CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());*/
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap.GetCpuHandle());
+	////
+	//// Fill out the heap with actual descriptors.
+	////
+	///*CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());*/
+	//CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap.GetCpuHandle());
 
-	auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
- 
-	uDevice.CreateSRV_Tex2D(woodCrateTex.Get(), hDescriptor);
+	//auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
+ //
+	//uDevice.CreateSRV_Tex2D(woodCrateTex.Get(), hDescriptor);
 }
 
 void CrateApp::BuildShadersAndInputLayout()
@@ -599,7 +608,7 @@ void CrateApp::BuildShadersAndInputLayout()
     };
 }
 
-void CrateApp::BuildShapeGeometry(DirectX::ResourceUploadBatch& upload)
+void CrateApp::BuildShapeGeometry()
 {
     GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
@@ -644,7 +653,7 @@ void CrateApp::BuildShapeGeometry(DirectX::ResourceUploadBatch& upload)
 	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
 	geo->IndexBufferByteSize = ibByteSize;*/
 
-	geo->InitBuffer(uDevice.raw.Get(), upload,
+	geo->InitBuffer(uDevice.raw.Get(), Ubpa::DXRenderer::Instance().GetUpload(),
 		vertices.data(), (UINT)vertices.size(), sizeof(Vertex),
 		indices.data(), (UINT)indices.size(), DXGI_FORMAT_R16_UINT);
 
@@ -700,7 +709,7 @@ void CrateApp::BuildMaterials()
 	auto woodCrate = std::make_unique<Material>();
 	woodCrate->Name = "woodCrate";
 	woodCrate->MatCBIndex = 0;
-	woodCrate->DiffuseSrvHeapIndex = 0;
+	woodCrate->DiffuseSrvGpuHandle = Ubpa::DXRenderer::Instance().GetTextureGpuHandle("woodCrateTex");
 	woodCrate->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	woodCrate->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
 	woodCrate->Roughness = 0.2f;
@@ -743,13 +752,13 @@ void CrateApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::ve
         cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
 		/*CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());*/
-		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap.GetGpuHandle());
-		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+		/*CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap.GetGpuHandle());
+		tex.Offset(ri->Mat->DiffuseSrvGpuHandle, mCbvSrvDescriptorSize);*/
 
         D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex*objCBByteSize;
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = matCB->GetGPUVirtualAddress() + ri->Mat->MatCBIndex*matCBByteSize;
 
-		cmdList->SetGraphicsRootDescriptorTable(0, tex);
+		cmdList->SetGraphicsRootDescriptorTable(0, ri->Mat->DiffuseSrvGpuHandle);
 		//cmdList->SetGraphicsRootShaderResourceView(0, mTextures["woodCrate"]->Resource->GetGPUVirtualAddress());
         cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
         cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);

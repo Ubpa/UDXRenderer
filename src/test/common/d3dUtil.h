@@ -8,6 +8,7 @@
 
 #include <UDX12/UDX12.h>
 #include <UFG/DX12/dx12.h>
+#include <UDXRenderer/UDXRenderer.h>
 
 #include <windows.h>
 #include <wrl.h>
@@ -90,11 +91,9 @@ struct Material
 	// Index into constant buffer corresponding to this material.
 	int MatCBIndex = -1;
 
-	// Index into SRV heap for diffuse texture.
-	int DiffuseSrvHeapIndex = -1;
+	D3D12_GPU_DESCRIPTOR_HANDLE DiffuseSrvGpuHandle{ 0 };
 
-	// Index into SRV heap for normal texture.
-	int NormalSrvHeapIndex = -1;
+	D3D12_GPU_DESCRIPTOR_HANDLE NormalSrvGpuHandle{ 0 };
 
 	// Dirty flag indicating the material has changed and we need to update the constant buffer.
 	// Because we have a material constant buffer for each FrameResource, we have to apply the

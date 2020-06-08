@@ -2,11 +2,7 @@
 
 #include <string>
 
-#include <d3d12.h>
-
-namespace DirectX {
-	class ResourceUploadBatch;
-}
+#include <UDX12/UDX12.h>
 
 namespace Ubpa {
 	class DXRenderer {
@@ -21,9 +17,22 @@ namespace Ubpa {
 		DXRenderer& Init(ID3D12Device* device);
 		void Release();
 
-		DXRenderer& RegisterDDSTextureFromFile(DirectX::ResourceUploadBatch& upload, std::string name, std::wstring filename);
+		DXRenderer& RegisterDDSTextureFromFile(DirectX::ResourceUploadBatch& upload,
+			std::string name, std::wstring filename);
+
+		DX12::MeshGeometry& RegisterStaticMeshGeometry(
+			DirectX::ResourceUploadBatch& upload, std::string name,
+			const void* vb_data, UINT vb_count, UINT vb_stride,
+			const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format);
+
+		DX12::MeshGeometry& RegisterDynamicMeshGeometry(
+			std::string name,
+			const void* vb_data, UINT vb_count, UINT vb_stride,
+			const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format);
 
 		D3D12_GPU_DESCRIPTOR_HANDLE GetTextureGpuHandle(const std::string& name) const;
+
+		DX12::MeshGeometry& GetMeshGeometry(const std::string& name) const;
 
 	private:
 		struct Impl;

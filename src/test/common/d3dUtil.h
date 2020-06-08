@@ -30,7 +30,6 @@
 #include <sstream>
 #include <cassert>
 #include "d3dx12.h"
-#include "DDSTextureLoader.h"
 #include "MathHelper.h"
 
 #include <UDX12/_deps/DirectXTK12/ResourceUploadBatch.h>

@@ -39,6 +39,7 @@ struct RenderItem
 
 	Material* Mat = nullptr;
 	Ubpa::DX12::MeshGeometry* Geo = nullptr;
+	//std::string Geo;
 
     // Primitive topology.
     D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -101,7 +102,7 @@ private:
 	//ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 	Ubpa::DX12::DescriptorHeapAllocation mSrvDescriptorHeap;
 
-	std::unordered_map<std::string, std::unique_ptr<Ubpa::DX12::MeshGeometry>> mGeometries;
+	//std::unordered_map<std::string, std::unique_ptr<Ubpa::DX12::MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
@@ -633,10 +634,10 @@ void CrateApp::BuildShapeGeometry()
     const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
     const UINT ibByteSize = (UINT)indices.size()  * sizeof(std::uint16_t);
 
-	auto geo = std::make_unique<Ubpa::DX12::MeshGeometry>();
+	/*auto geo = std::make_unique<Ubpa::DX12::MeshGeometry>();
 	geo->Name = "boxGeo";
 
-	/*ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
 	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
 	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
@@ -653,13 +654,20 @@ void CrateApp::BuildShapeGeometry()
 	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
 	geo->IndexBufferByteSize = ibByteSize;*/
 
-	geo->InitBuffer(uDevice.raw.Get(), Ubpa::DXRenderer::Instance().GetUpload(),
+	/*geo->InitBuffer(uDevice.raw.Get(), Ubpa::DXRenderer::Instance().GetUpload(),
 		vertices.data(), (UINT)vertices.size(), sizeof(Vertex),
 		indices.data(), (UINT)indices.size(), DXGI_FORMAT_R16_UINT);
 
 	geo->submeshGeometries["box"] = boxSubmesh;
 
-	mGeometries[geo->Name] = std::move(geo);
+	mGeometries[geo->Name] = std::move(geo);*/
+
+	Ubpa::DXRenderer::Instance()
+		.RegisterStaticMeshGeometry(
+			Ubpa::DXRenderer::Instance().GetUpload(), "boxGeo",
+			vertices.data(), (UINT)vertices.size(), sizeof(Vertex),
+			indices.data(), (UINT)indices.size(), DXGI_FORMAT_R16_UINT)
+		.submeshGeometries["box"] = boxSubmesh;
 }
 
 void CrateApp::BuildPSOs()
@@ -722,7 +730,7 @@ void CrateApp::BuildRenderItems()
 	auto boxRitem = std::make_unique<RenderItem>();
 	boxRitem->ObjCBIndex = 0;
 	boxRitem->Mat = mMaterials["woodCrate"].get();
-	boxRitem->Geo = mGeometries["boxGeo"].get();
+	boxRitem->Geo = &Ubpa::DXRenderer::Instance().GetMeshGeometry("boxGeo");
 	boxRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->submeshGeometries["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->submeshGeometries["box"].StartIndexLocation;

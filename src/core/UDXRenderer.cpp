@@ -87,8 +87,8 @@ DXRenderer& DXRenderer::RegisterDDSTextureFromFile(
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc =
         isCubeMap ?
-        DX12::Desc::SRV::TexCube(tex.resource)
-        : DX12::Desc::SRV::Tex2D(tex.resource);
+        DX12::Desc::SRV::TexCube(tex.resource->GetDesc().Format)
+        : DX12::Desc::SRV::Tex2D(tex.resource->GetDesc().Format);
 
     pImpl->device->CreateShaderResourceView(tex.resource, &srvDesc, tex.allocationSRV.GetCpuHandle());
 
@@ -178,7 +178,7 @@ DXRenderer& DXRenderer::RegisterRenderTexture2D(std::string name, UINT width, UI
     // create SRV
     pImpl->device->CreateShaderResourceView(
         tex.resource,
-        &DX12::Desc::SRV::Tex2D(tex.resource),
+        &DX12::Desc::SRV::Tex2D(format),
         tex.allocationSRV.GetCpuHandle());
 
     // create RTVs
@@ -225,7 +225,7 @@ DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, D
     // create SRV
     pImpl->device->CreateShaderResourceView(
         tex.resource,
-        &DX12::Desc::SRV::TexCube(tex.resource),
+        &DX12::Desc::SRV::TexCube(format),
         tex.allocationSRV.GetCpuHandle());
 
     // create RTVs

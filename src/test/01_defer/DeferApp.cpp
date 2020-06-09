@@ -308,84 +308,115 @@ void DeferApp::Draw(const GameTimer& gt)
     ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, mOpaquePSO.Get()));
 
 	uGCmdList.SetDescriptorHeaps(Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
-	uGCmdList->RSSetViewports(1, &mScreenViewport);
-	uGCmdList->RSSetScissorRects(1, &mScissorRect);
 
 	fg.Clear();
 	auto fgRsrcMngr = mCurrFrameResource->GetResource<Ubpa::DX12::FG::RsrcMngr>("FrameGraphRsrcMngr");
 	fgRsrcMngr->NewFrame();
 	fgExecutor.NewFrame();;
 
+	auto renderTexture = fg.AddResourceNode("Render Texture");
 	auto backbuffer = fg.AddResourceNode("Back Buffer");
 	auto depthstencil = fg.AddResourceNode("Depth Stencil");
-	auto pass = fg.AddPassNode(
-		"Pass",
+	auto rtPass = fg.AddPassNode(
+		"Render to Texture",
 		{},
-		{ backbuffer,depthstencil }
+		{ renderTexture,depthstencil }
+	);
+	auto presentPass = fg.AddPassNode(
+		"Present",
+		{ renderTexture },
+		{ backbuffer }
 	);
 
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dsvDesc.Format = mDepthStencilFormat;
-	dsvDesc.Texture2D.MipSlice = 0;
-
 	(*fgRsrcMngr)
+		.RegisterTemporalRsrc(renderTexture,
+			Ubpa::DX12::FG::RsrcType::RT2D(DXGI_FORMAT_R8G8B8A8_UNORM, mClientWidth, mClientHeight, Colors::LightSteelBlue))
 		.RegisterImportedRsrc(backbuffer, { CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT })
 		.RegisterImportedRsrc(depthstencil, { mDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE })
-		.RegisterPassRsrcs(pass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
+		.RegisterPassRsrcs(rtPass, renderTexture, D3D12_RESOURCE_STATE_RENDER_TARGET,
 			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{})
-		.RegisterPassRsrcs(pass, depthstencil, D3D12_RESOURCE_STATE_DEPTH_WRITE, dsvDesc);
+		.RegisterPassRsrcs(rtPass, depthstencil,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE, Ubpa::DX12::Desc::DSV::Basic(mDepthStencilFormat))
+		.RegisterPassRsrcs(presentPass, renderTexture, D3D12_RESOURCE_STATE_COPY_SOURCE,
+			Ubpa::DX12::Desc::SRV::Tex2D(CurrentBackBuffer()->GetDesc().Format))
+		.RegisterPassRsrcs(presentPass, backbuffer, D3D12_RESOURCE_STATE_COPY_DEST,
+			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{});
 
 	fgExecutor.RegisterPassFunc(
-		pass,
+		rtPass,
 		[&](const Ubpa::DX12::FG::PassRsrcs& rsrcs) {
-			// Clear the back buffer and depth buffer.
-			uGCmdList.ClearRenderTargetView(rsrcs.find(backbuffer)->second.cpuHandle, Colors::LightSteelBlue);
-			uGCmdList.ClearDepthStencilView(rsrcs.find(depthstencil)->second.cpuHandle);
+			auto rt = rsrcs.find(renderTexture)->second;
+			auto ds = rsrcs.find(depthstencil)->second;
+			D3D12_VIEWPORT viewport;
+			viewport.TopLeftX = 0;
+			viewport.TopLeftY = 0;
+			viewport.Width = rt.resource->GetDesc().Width;
+			viewport.Height = rt.resource->GetDesc().Height;
+			viewport.MinDepth = 0.0f;
+			viewport.MaxDepth = 1.0f;
+			D3D12_RECT rect = { 0, 0, viewport.Width, viewport.Height };
+			uGCmdList->RSSetViewports(1, &viewport);
+			uGCmdList->RSSetScissorRects(1, &rect);
+
+			// Clear the render texture and depth buffer.
+			uGCmdList.ClearRenderTargetView(rt.cpuHandle, Colors::LightSteelBlue);
+			uGCmdList.ClearDepthStencilView(ds.cpuHandle);
 
 			// Specify the buffers we are going to render to.
-			uGCmdList.OMSetRenderTarget(rsrcs.find(backbuffer)->second.cpuHandle, rsrcs.find(depthstencil)->second.cpuHandle);
-
-			//uGCmdList.SetDescriptorHeaps(mSrvDescriptorHeap.Get());
+			uGCmdList.OMSetRenderTarget(rt.cpuHandle, ds.cpuHandle);
 
 			uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
 
 			auto passCB = mCurrFrameResource
-				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
+				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("rtPass constants")
 				->GetResource();
 			uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
-
-			DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
 
 			DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
 		}
 	);
 
- //   // Indicate a state transition on the resource usage.
-	//uGCmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-	//	D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	fgExecutor.RegisterPassFunc(
+		presentPass,
+		[&](const Ubpa::DX12::FG::PassRsrcs& rsrcs) {
+			auto rt = rsrcs.find(renderTexture)->second;
+			auto bb = rsrcs.find(backbuffer)->second;
+			uGCmdList->CopyResource(bb.resource, rt.resource);
+			//D3D12_VIEWPORT viewport;
+			//viewport.TopLeftX = 0;
+			//viewport.TopLeftY = 0;
+			//viewport.Width = bb.resource->GetDesc().Width;
+			//viewport.Height = bb.resource->GetDesc().Height;
+			//viewport.MinDepth = 0.0f;
+			//viewport.MaxDepth = 1.0f;
+			//D3D12_RECT rect = { 0, 0, viewport.Width, viewport.Height };
+			//uGCmdList->RSSetViewports(1, &viewport);
+			//uGCmdList->RSSetScissorRects(1, &rect);
 
- //   // Clear the back buffer and depth buffer.
- //   uGCmdList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
- //   uGCmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+			//// Clear the render texture and depth buffer.
+			//uGCmdList.ClearRenderTargetView(bb.cpuHandle, Colors::LightSteelBlue);
 
- //   // Specify the buffers we are going to render to.
- //   uGCmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+			//// Specify the buffers we are going to render to.
+			//uGCmdList.OMSetRenderTarget(bb.cpuHandle, ds.cpuHandle);
+			//uGCmdList->OMSetRenderTargets(1, &bb.cpuHandle, false, nullptr);
 
-	//ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
-	//uGCmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+			//uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	//uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
+			//auto passCB = mCurrFrameResource
+			//	->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("rtPass constants")
+			//	->GetResource();
+			//uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
-	//auto passCB = mCurrFrameResource->PassCB->GetResource();
-	//uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+			//DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
 
- //   DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
+		}
+	);
 
- //   // Indicate a state transition on the resource usage.
-	//uGCmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	static bool flag{ false };
+	if (!flag) {
+		OutputDebugStringA(fg.ToGraphvizGraph().Dump().c_str());
+		flag = true;
+	}
 
 	auto [success, crst] = fgCompiler.Compile(fg);
 	fgExecutor.Execute(crst, *fgRsrcMngr);
@@ -564,7 +595,7 @@ void DeferApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
 
 	auto currPassCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>");
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("rtPass constants");
 	currPassCB->Set(0, mMainPassCB);
 }
 
@@ -654,9 +685,9 @@ void DeferApp::BuildShadersAndInputLayout()
 	//mShaders["standardVS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
 	//mShaders["opaquePS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
 	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("standardVS",
-		L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
+		L"..\\data\\shaders\\01_defer\\Default.hlsl", nullptr, "VS", "vs_5_0");
 	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("opaquePS",
-		L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
+		L"..\\data\\shaders\\01_defer\\Default.hlsl", nullptr, "PS", "ps_5_0");
 	
     mInputLayout =
     {
@@ -783,7 +814,7 @@ void DeferApp::BuildFrameResources()
 			reinterpret_cast<ID3D12CommandAllocator*>(allocator)->Release();
 		});
 
-		fr->RegisterResource("ArrayUploadBuffer<PassConstants>",
+		fr->RegisterResource("rtPass constants",
 			new Ubpa::DX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
 
 		fr->RegisterResource("ArrayUploadBuffer<MaterialConstants>",

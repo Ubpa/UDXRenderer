@@ -136,7 +136,7 @@ private:
 
     //UINT mCbvSrvDescriptorSize = 0;
 
-    ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
+    //ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 
 	//ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 	Ubpa::DX12::DescriptorHeapAllocation mSrvDescriptorHeap;
@@ -148,7 +148,7 @@ private:
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
-    ComPtr<ID3D12PipelineState> mOpaquePSO = nullptr;
+    //ComPtr<ID3D12PipelineState> mOpaquePSO = nullptr;
  
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -305,7 +305,7 @@ void DeferApp::Draw(const GameTimer& gt)
 
     // A command list can be reset after it has been added to the command queue via ExecuteCommandList.
     // Reusing the command list reuses memory.
-    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, mOpaquePSO.Get()));
+    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, Ubpa::DXRenderer::Instance().GetPSO("opaque")));
 
 	uGCmdList.SetDescriptorHeaps(Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
 	uGCmdList->RSSetViewports(1, &mScreenViewport);
@@ -349,7 +349,7 @@ void DeferApp::Draw(const GameTimer& gt)
 
 			//uGCmdList.SetDescriptorHeaps(mSrvDescriptorHeap.Get());
 
-			uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
+			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("default"));
 
 			auto passCB = mCurrFrameResource
 				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
@@ -607,7 +607,7 @@ void DeferApp::BuildRootSignature()
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     // create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
-    ComPtr<ID3DBlob> serializedRootSig = nullptr;
+    /*ComPtr<ID3DBlob> serializedRootSig = nullptr;
     ComPtr<ID3DBlob> errorBlob = nullptr;
     HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
         serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
@@ -622,7 +622,9 @@ void DeferApp::BuildRootSignature()
 		0,
         serializedRootSig->GetBufferPointer(),
         serializedRootSig->GetBufferSize(),
-        IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+        IID_PPV_ARGS(mRootSignature.GetAddressOf())));*/
+
+	Ubpa::DXRenderer::Instance().RegisterRootSignature("default", &rootSigDesc);
 }
 
 void DeferApp::BuildDescriptorHeaps()
@@ -758,14 +760,15 @@ void DeferApp::BuildPSOs()
 	//opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	//opaquePsoDesc.DSVFormat = mDepthStencilFormat;
 	auto opaquePsoDesc = Ubpa::DX12::Desc::PSO::Basic(
-		mRootSignature.Get(),
+		Ubpa::DXRenderer::Instance().GetRootSignature("default"),
 		mInputLayout.data(), (UINT)mInputLayout.size(),
 		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS"),
 		Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS"),
 		mBackBufferFormat,
 		mDepthStencilFormat
 	);
-    ThrowIfFailed(uDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mOpaquePSO)));
+    //ThrowIfFailed(uDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mOpaquePSO)));
+	Ubpa::DXRenderer::Instance().RegisterPSO("opaque", &opaquePsoDesc);
 }
 
 void DeferApp::BuildFrameResources()

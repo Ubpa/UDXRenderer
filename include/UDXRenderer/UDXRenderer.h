@@ -46,6 +46,14 @@ namespace Ubpa {
 			const std::string& entrypoint,
 			const std::string& target);
 
+		DXRenderer& RegisterRootSignature(
+			std::string name,
+			const D3D12_ROOT_SIGNATURE_DESC* descs);
+
+		DXRenderer& RegisterPSO(
+			std::string name,
+			const D3D12_GRAPHICS_PIPELINE_STATE_DESC* desc);
+
 		DXRenderer& RegisterRenderTexture2D(std::string name, UINT width, UINT height, DXGI_FORMAT format);
 		DXRenderer& RegisterRenderTextureCube(std::string name, UINT size, DXGI_FORMAT format);
 
@@ -57,6 +65,10 @@ namespace Ubpa {
 		DX12::MeshGeometry& GetMeshGeometry(const std::string& name) const;
 
 		ID3DBlob* GetShaderByteCode(const std::string& name) const;
+
+		ID3D12RootSignature* GetRootSignature(const std::string& name) const;
+
+		ID3D12PipelineState* GetPSO(const std::string& name) const;
 
 	private:
 		struct Impl;

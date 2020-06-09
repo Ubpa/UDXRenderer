@@ -20,6 +20,8 @@ struct DXRenderer::Impl {
 
     std::unordered_map<std::string, DX12::MeshGeometry> meshGeoMap;
     std::unordered_map<std::string, ID3DBlob*> shaderByteCodeMap;
+    std::unordered_map<std::string, ID3D12RootSignature*> rootSignatureMap;
+    std::unordered_map<std::string, ID3D12PipelineState*> PSOMap;
 };
 
 DXRenderer::DXRenderer()
@@ -52,11 +54,19 @@ void DXRenderer::Release() {
         tex.resource->Release();
     }
 
+    for (auto& [name, rootSig] : pImpl->rootSignatureMap)
+        rootSig->Release();
+
+    for (auto& [name, PSO] : pImpl->PSOMap)
+        PSO->Release();
+
     pImpl->device = nullptr;
     delete pImpl->upload;
 
     pImpl->textureMap.clear();
     pImpl->meshGeoMap.clear();
+    pImpl->rootSignatureMap.clear();
+    pImpl->PSOMap.clear();
 
     pImpl->isInit = false;
 }
@@ -245,4 +255,56 @@ DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, D
     pImpl->textureMap.emplace(std::move(name), std::move(tex));
 
     return *this;
+}
+
+DXRenderer& DXRenderer::RegisterRootSignature(
+    std::string name,
+    const D3D12_ROOT_SIGNATURE_DESC* desc
+)
+{
+    // create a root signature with a single slot which points to a descriptor range consisting of a single constant buffer
+    ID3DBlob* serializedRootSig = nullptr;
+    ID3DBlob* errorBlob = nullptr;
+
+    HRESULT hr = D3D12SerializeRootSignature(desc, D3D_ROOT_SIGNATURE_VERSION_1,
+        &serializedRootSig, &errorBlob);
+
+    if (errorBlob != nullptr)
+    {
+        ::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+        errorBlob->Release();
+    }
+    ThrowIfFailed(hr);
+
+    ID3D12RootSignature* rootSig;
+
+    ThrowIfFailed(pImpl->device->CreateRootSignature(
+        0,
+        serializedRootSig->GetBufferPointer(),
+        serializedRootSig->GetBufferSize(),
+        IID_PPV_ARGS(&rootSig)));
+
+    pImpl->rootSignatureMap.emplace(std::move(name), rootSig);
+
+    serializedRootSig->Release();
+
+    return *this;
+}
+
+ID3D12RootSignature* DXRenderer::GetRootSignature(const std::string& name) const {
+    return pImpl->rootSignatureMap.find(name)->second;
+}
+
+DXRenderer& DXRenderer::RegisterPSO(
+    std::string name,
+    const D3D12_GRAPHICS_PIPELINE_STATE_DESC* desc)
+{
+    ID3D12PipelineState* pso;
+    pImpl->device->CreateGraphicsPipelineState(desc, IID_PPV_ARGS(&pso));
+    pImpl->PSOMap.emplace(std::move(name), pso);
+    return *this;
+}
+
+ID3D12PipelineState* DXRenderer::GetPSO(const std::string& name) const {
+    return pImpl->PSOMap.find(name)->second;
 }

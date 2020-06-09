@@ -148,7 +148,7 @@ private:
 
     std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout;
 
-    ComPtr<ID3D12PipelineState> mOpaquePSO = nullptr;
+    //ComPtr<ID3D12PipelineState> mOpaquePSO = nullptr;
  
 	// List of all the render items.
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
@@ -305,7 +305,7 @@ void DeferApp::Draw(const GameTimer& gt)
 
     // A command list can be reset after it has been added to the command queue via ExecuteCommandList.
     // Reusing the command list reuses memory.
-    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, mOpaquePSO.Get()));
+	ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, Ubpa::DXRenderer::Instance().GetPSO("opaque")));
 
 	uGCmdList.SetDescriptorHeaps(Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
 
@@ -796,7 +796,8 @@ void DeferApp::BuildPSOs()
 		mBackBufferFormat,
 		mDepthStencilFormat
 	);
-    ThrowIfFailed(uDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mOpaquePSO)));
+    //ThrowIfFailed(uDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mOpaquePSO)));
+	Ubpa::DXRenderer::Instance().RegisterPSO("opaque", &opaquePsoDesc);
 }
 
 void DeferApp::BuildFrameResources()

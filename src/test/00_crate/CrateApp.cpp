@@ -7,13 +7,51 @@
 #include "../common/MathHelper.h"
 #include <UDX12/UploadBuffer.h>
 #include "../common/GeometryGenerator.h"
-#include "FrameResource.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 
 const int gNumFrameResources = 3;
+
+struct ObjectConstants
+{
+	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+};
+
+struct PassConstants
+{
+	DirectX::XMFLOAT4X4 View = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 InvView = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 Proj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 InvProj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 ViewProj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 InvViewProj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT3 EyePosW = { 0.0f, 0.0f, 0.0f };
+	float cbPerObjectPad1 = 0.0f;
+	DirectX::XMFLOAT2 RenderTargetSize = { 0.0f, 0.0f };
+	DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f };
+	float NearZ = 0.0f;
+	float FarZ = 0.0f;
+	float TotalTime = 0.0f;
+	float DeltaTime = 0.0f;
+
+	DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	// Indices [0, NUM_DIR_LIGHTS) are directional lights;
+	// indices [NUM_DIR_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHTS) are point lights;
+	// indices [NUM_DIR_LIGHTS+NUM_POINT_LIGHTS, NUM_DIR_LIGHTS+NUM_POINT_LIGHT+NUM_SPOT_LIGHTS)
+	// are spot lights for a maximum of MaxLights per object.
+	Light Lights[MaxLights];
+};
+
+struct Vertex
+{
+	DirectX::XMFLOAT3 Pos;
+	DirectX::XMFLOAT3 Normal;
+	DirectX::XMFLOAT2 TexC;
+};
 
 // Lightweight structure stores parameters to draw a shape.  This will
 // vary from app-to-app.
@@ -91,11 +129,12 @@ private:
 
 private:
 
-    std::vector<std::unique_ptr<FrameResource>> mFrameResources;
-    FrameResource* mCurrFrameResource = nullptr;
+    //std::vector<std::unique_ptr<FrameResource>> mFrameResources;
+	std::vector<std::unique_ptr<Ubpa::DX12::FrameResource>> mFrameResources;
+	Ubpa::DX12::FrameResource* mCurrFrameResource = nullptr;
     int mCurrFrameResourceIndex = 0;
 
-    UINT mCbvSrvDescriptorSize = 0;
+    //UINT mCbvSrvDescriptorSize = 0;
 
     ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 
@@ -189,7 +228,7 @@ bool CrateApp::Initialize()
 
     // Get the increment size of a descriptor in this heap type.  This is hardware specific, 
 	// so we have to query this information.
-    mCbvSrvDescriptorSize = uDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    //mCbvSrvDescriptorSize = uDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	Ubpa::DXRenderer::Instance().GetUpload().Begin();
  
@@ -235,13 +274,14 @@ void CrateApp::Update(const GameTimer& gt)
 
     // Has the GPU finished processing the commands of the current frame resource?
     // If not, wait until the GPU has completed commands up to this fence point.
-    if(mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
+	mCurrFrameResource->Wait();
+    /*if(mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
     {
         HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
         ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
-    }
+    }*/
 
 	AnimateMaterials(gt);
 	UpdateObjectCBs(gt);
@@ -251,7 +291,7 @@ void CrateApp::Update(const GameTimer& gt)
 
 void CrateApp::Draw(const GameTimer& gt)
 {
-    auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
+	auto cmdListAlloc = mCurrFrameResource->GetResource<ID3D12CommandAllocator>("CommandAllocator");
 
     // Reuse the memory associated with command recording.
     // We can only reset when the associated command lists have finished execution on the GPU.
@@ -259,7 +299,7 @@ void CrateApp::Draw(const GameTimer& gt)
 
     // A command list can be reset after it has been added to the command queue via ExecuteCommandList.
     // Reusing the command list reuses memory.
-    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc.Get(), mOpaquePSO.Get()));
+    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, mOpaquePSO.Get()));
 
 	uGCmdList.SetDescriptorHeaps(Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
 	uGCmdList->RSSetViewports(1, &mScreenViewport);
@@ -304,7 +344,9 @@ void CrateApp::Draw(const GameTimer& gt)
 
 			uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
 
-			auto passCB = mCurrFrameResource->PassCB->GetResource();
+			auto passCB = mCurrFrameResource
+				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
+				->GetResource();
 			uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
 			DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
@@ -351,13 +393,14 @@ void CrateApp::Draw(const GameTimer& gt)
     ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
-    // Advance the fence value to mark commands up to this fence point.
-    mCurrFrameResource->Fence = ++mCurrentFence;
+    //// Advance the fence value to mark commands up to this fence point.
+    //mCurrFrameResource->Fence = ++mCurrentFence;
 
-    // Add an instruction to the command queue to set a new fence point. 
-    // Because we are on the GPU timeline, the new fence point won't be 
-    // set until the GPU finishes processing all the commands prior to this Signal().
-    uCmdQueue->Signal(mFence.Get(), mCurrentFence);
+    //// Add an instruction to the command queue to set a new fence point. 
+    //// Because we are on the GPU timeline, the new fence point won't be 
+    //// set until the GPU finishes processing all the commands prior to this Signal().
+    //uCmdQueue->Signal(mFence.Get(), mCurrentFence);
+	mCurrFrameResource->Signal(uCmdQueue.raw.Get(), ++mCurrentFence);
 }
 
 void CrateApp::OnMouseDown(WPARAM btnState, int x, int y)
@@ -432,7 +475,8 @@ void CrateApp::AnimateMaterials(const GameTimer& gt)
 
 void CrateApp::UpdateObjectCBs(const GameTimer& gt)
 {
-	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
+	auto currObjectCB = mCurrFrameResource
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>");
 	for(auto& e : mAllRitems)
 	{
 		// Only update the cbuffer data if the constants have changed.  
@@ -456,7 +500,8 @@ void CrateApp::UpdateObjectCBs(const GameTimer& gt)
 
 void CrateApp::UpdateMaterialCBs(const GameTimer& gt)
 {
-	auto currMaterialCB = mCurrFrameResource->MaterialCB.get();
+	auto currMaterialCB = mCurrFrameResource
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>");
 	for(auto& e : mMaterials)
 	{
 		// Only update the cbuffer data if the constants have changed.  If the cbuffer
@@ -511,7 +556,8 @@ void CrateApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
 
-	auto currPassCB = mCurrFrameResource->PassCB.get();
+	auto currPassCB = mCurrFrameResource
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>");
 	currPassCB->Set(0, mMainPassCB);
 }
 
@@ -711,8 +757,37 @@ void CrateApp::BuildFrameResources()
 {
     for(int i = 0; i < gNumFrameResources; ++i)
     {
+		auto fr = std::make_unique<Ubpa::DX12::FrameResource>(mFence.Get());
+
+		ID3D12CommandAllocator* allocator;
+		ThrowIfFailed(uDevice->CreateCommandAllocator(
+			D3D12_COMMAND_LIST_TYPE_DIRECT,
+			IID_PPV_ARGS(&allocator)));
+
+		fr->RegisterResource("CommandAllocator", allocator, [](void* allocator) {
+			reinterpret_cast<ID3D12CommandAllocator*>(allocator)->Release();
+		});
+
+		fr->RegisterResource("ArrayUploadBuffer<PassConstants>",
+			new Ubpa::DX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
+
+		fr->RegisterResource("ArrayUploadBuffer<MaterialConstants>",
+			new Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>{ uDevice.raw.Get(), mMaterials.size(), true });
+
+		fr->RegisterResource("ArrayUploadBuffer<ObjectConstants>",
+			new Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
+
+		mFrameResources.emplace_back(std::move(fr));
+
+		// We cannot update a cbuffer until the GPU is done processing the commands
+		// that reference it.  So each frame needs their own cbuffers.
+		// std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<FrameConstants>> FrameCB = nullptr;
+		/*std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<PassConstants>> PassCB = nullptr;
+		std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>> MaterialCB = nullptr;
+		std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>> ObjectCB = nullptr;
+
         mFrameResources.push_back(std::make_unique<FrameResource>(uDevice.raw.Get(),
-            1, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));
+            1, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));*/
     }
 }
 
@@ -751,8 +826,12 @@ void CrateApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::ve
     UINT objCBByteSize = Ubpa::DX12::Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
     UINT matCBByteSize = Ubpa::DX12::Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
  
-	auto objectCB = mCurrFrameResource->ObjectCB->GetResource();
-	auto matCB = mCurrFrameResource->MaterialCB->GetResource();
+	auto objectCB = mCurrFrameResource
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>")
+		->GetResource();
+	auto matCB = mCurrFrameResource
+		->GetResource<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>")
+		->GetResource();
 
     // For each render item...
     for(size_t i = 0; i < ritems.size(); ++i)

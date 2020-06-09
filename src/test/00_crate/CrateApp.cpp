@@ -169,7 +169,7 @@ private:
     POINT mLastMousePos;
 
 	// frame graph
-	Ubpa::DX12::FG::RsrcMngr fgRsrcMngr;
+	//Ubpa::DX12::FG::RsrcMngr fgRsrcMngr;
 	Ubpa::DX12::FG::Executor fgExecutor;
 	Ubpa::FG::Compiler fgCompiler;
 	Ubpa::FG::FrameGraph fg;
@@ -221,7 +221,7 @@ bool CrateApp::Initialize()
 
 	Ubpa::DX12::DescriptorHeapMngr::Instance().Init(uDevice.raw.Get(), 1024, 1024, 1024, 1024, 1024);
 
-	fgRsrcMngr.Init(uGCmdList, uDevice);
+	//fgRsrcMngr.Init(uGCmdList, uDevice);
 
     // Reset the command list to prep for initialization commands.
     ThrowIfFailed(uGCmdList->Reset(mDirectCmdListAlloc.Get(), nullptr));
@@ -261,6 +261,12 @@ void CrateApp::OnResize()
     // The window resized, so update the aspect ratio and recompute the projection matrix.
     XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
     XMStoreFloat4x4(&mProj, P);
+
+	auto clearFGRsrcMngr = [](void* rsrcMngr) {
+		reinterpret_cast<Ubpa::DX12::FG::RsrcMngr*>(rsrcMngr)->Clear();
+	};
+	for (auto& frsrc : mFrameResources)
+		frsrc->DelayUpdateResource("FrameGraphRsrcMngr", clearFGRsrcMngr);
 }
 
 void CrateApp::Update(const GameTimer& gt)
@@ -306,7 +312,8 @@ void CrateApp::Draw(const GameTimer& gt)
 	uGCmdList->RSSetScissorRects(1, &mScissorRect);
 
 	fg.Clear();
-	fgRsrcMngr.NewFrame();
+	auto fgRsrcMngr = mCurrFrameResource->GetResource<Ubpa::DX12::FG::RsrcMngr>("FrameGraphRsrcMngr");
+	fgRsrcMngr->NewFrame();
 	fgExecutor.NewFrame();;
 
 	auto backbuffer = fg.AddResourceNode("Back Buffer");
@@ -323,7 +330,7 @@ void CrateApp::Draw(const GameTimer& gt)
 	dsvDesc.Format = mDepthStencilFormat;
 	dsvDesc.Texture2D.MipSlice = 0;
 
-	fgRsrcMngr
+	(*fgRsrcMngr)
 		.RegisterImportedRsrc(backbuffer, { CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT })
 		.RegisterImportedRsrc(depthstencil, { mDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE })
 		.RegisterPassRsrcs(pass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -381,7 +388,7 @@ void CrateApp::Draw(const GameTimer& gt)
 	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	auto [success, crst] = fgCompiler.Compile(fg);
-	fgExecutor.Execute(fg, crst, fgRsrcMngr);
+	fgExecutor.Execute(crst, *fgRsrcMngr);
 
     // Done recording commands.
     ThrowIfFailed(uGCmdList->Close());
@@ -722,34 +729,42 @@ void CrateApp::BuildShapeGeometry()
 
 void CrateApp::BuildPSOs()
 {
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
+ //   D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
 
-	//
-	// PSO for opaque objects.
-	//
-    ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
-	opaquePsoDesc.pRootSignature = mRootSignature.Get();
-	opaquePsoDesc.VS = 
-	{ 
-		reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferPointer()),
-		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferSize()
-	};
-	opaquePsoDesc.PS = 
-	{ 
-		reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferPointer()),
-		Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferSize()
-	};
-	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	opaquePsoDesc.SampleMask = UINT_MAX;
-	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	opaquePsoDesc.NumRenderTargets = 1;
-	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
-	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
-	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
-	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
+	////
+	//// PSO for opaque objects.
+	////
+ //   ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	//opaquePsoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
+	//opaquePsoDesc.pRootSignature = mRootSignature.Get();
+	//opaquePsoDesc.VS = 
+	//{ 
+	//	reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferPointer()),
+	//	Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS")->GetBufferSize()
+	//};
+	//opaquePsoDesc.PS = 
+	//{ 
+	//	reinterpret_cast<BYTE*>(Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferPointer()),
+	//	Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS")->GetBufferSize()
+	//};
+	//opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	//opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	//opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	//opaquePsoDesc.SampleMask = UINT_MAX;
+	//opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	//opaquePsoDesc.NumRenderTargets = 1;
+	//opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
+	//opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+	//opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+	//opaquePsoDesc.DSVFormat = mDepthStencilFormat;
+	auto opaquePsoDesc = Ubpa::DX12::Desc::PSO::Basic(
+		mRootSignature.Get(),
+		mInputLayout.data(), (UINT)mInputLayout.size(),
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS"),
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS"),
+		mBackBufferFormat,
+		mDepthStencilFormat
+	);
     ThrowIfFailed(uDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mOpaquePSO)));
 }
 
@@ -776,6 +791,10 @@ void CrateApp::BuildFrameResources()
 
 		fr->RegisterResource("ArrayUploadBuffer<ObjectConstants>",
 			new Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
+
+		auto fgRsrcMngr = new Ubpa::DX12::FG::RsrcMngr;
+		fgRsrcMngr->Init(uGCmdList, uDevice);
+		fr->RegisterResource("FrameGraphRsrcMngr", fgRsrcMngr);
 
 		mFrameResources.emplace_back(std::move(fr));
 

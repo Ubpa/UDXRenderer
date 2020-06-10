@@ -306,9 +306,14 @@ void DeferApp::Draw(const GameTimer& gt)
 		{},
 		{ gbuffer0,gbuffer1,gbuffer2,depthstencil }
 	);
-	auto debugPass = fg.AddPassNode(
+	/*auto debugPass = fg.AddPassNode(
 		"Debug",
 		{ gbuffer1 },
+		{ backbuffer }
+	);*/
+	auto deferLightingPass = fg.AddPassNode(
+		"Defer Lighting",
+		{ gbuffer0,gbuffer1,gbuffer2 },
 		{ backbuffer }
 	);
 
@@ -337,11 +342,22 @@ void DeferApp::Draw(const GameTimer& gt)
 		.RegisterPassRsrcs(gbPass, depthstencil,
 			D3D12_RESOURCE_STATE_DEPTH_WRITE, Ubpa::DX12::Desc::DSV::Basic(mDepthStencilFormat))
 
-		.RegisterPassRsrcs(debugPass, gbuffer1, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		/*.RegisterPassRsrcs(debugPass, gbuffer1, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 			Ubpa::DX12::Desc::SRV::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT))
 
 		.RegisterPassRsrcs(debugPass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
-			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{});
+			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{})*/
+
+		.RegisterPassRsrcs(deferLightingPass, gbuffer0, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			Ubpa::DX12::Desc::SRV::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT))
+		.RegisterPassRsrcs(deferLightingPass, gbuffer1, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			Ubpa::DX12::Desc::SRV::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT))
+		.RegisterPassRsrcs(deferLightingPass, gbuffer2, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			Ubpa::DX12::Desc::SRV::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT))
+
+		.RegisterPassRsrcs(deferLightingPass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
+			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{})
+		;
 
 	fgExecutor.RegisterPassFunc(
 		gbPass,
@@ -373,13 +389,43 @@ void DeferApp::Draw(const GameTimer& gt)
 		}
 	);
 
+	//fgExecutor.RegisterPassFunc(
+	//	debugPass,
+	//	[&](const Ubpa::DX12::FG::PassRsrcs& rsrcs) {
+	//		uGCmdList->SetPipelineState(Ubpa::DXRenderer::Instance().GetPSO("screen"));
+	//		auto img = rsrcs.find(gbuffer1)->second;
+	//		auto bb = rsrcs.find(backbuffer)->second;
+	//		
+	//		//uGCmdList->CopyResource(bb.resource, rt.resource);
+
+	//		// Clear the render texture and depth buffer.
+	//		uGCmdList.ClearRenderTargetView(bb.cpuHandle, Colors::LightSteelBlue);
+
+	//		// Specify the buffers we are going to render to.
+	//		//uGCmdList.OMSetRenderTarget(bb.cpuHandle, ds.cpuHandle);
+	//		uGCmdList->OMSetRenderTargets(1, &bb.cpuHandle, false, nullptr);
+
+	//		uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("screen"));
+
+	//		uGCmdList->SetGraphicsRootDescriptorTable(0, img.gpuHandle);
+
+	//		uGCmdList->IASetVertexBuffers(0, 0, nullptr);
+	//		uGCmdList->IASetIndexBuffer(nullptr);
+	//		uGCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	//		uGCmdList->DrawInstanced(6, 1, 0, 0);
+	//	}
+	//);
+
 	fgExecutor.RegisterPassFunc(
-		debugPass,
+		deferLightingPass,
 		[&](const Ubpa::DX12::FG::PassRsrcs& rsrcs) {
-			uGCmdList->SetPipelineState(Ubpa::DXRenderer::Instance().GetPSO("screen"));
-			auto img = rsrcs.find(gbuffer1)->second;
+			uGCmdList->SetPipelineState(Ubpa::DXRenderer::Instance().GetPSO("defer lighting"));
+			auto gb0 = rsrcs.find(gbuffer0)->second;
+			auto gb1 = rsrcs.find(gbuffer1)->second;
+			auto gb2 = rsrcs.find(gbuffer2)->second;
+
 			auto bb = rsrcs.find(backbuffer)->second;
-			
+
 			//uGCmdList->CopyResource(bb.resource, rt.resource);
 
 			// Clear the render texture and depth buffer.
@@ -389,9 +435,9 @@ void DeferApp::Draw(const GameTimer& gt)
 			//uGCmdList.OMSetRenderTarget(bb.cpuHandle, ds.cpuHandle);
 			uGCmdList->OMSetRenderTargets(1, &bb.cpuHandle, false, nullptr);
 
-			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("screen"));
+			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("defer lighting"));
 
-			uGCmdList->SetGraphicsRootDescriptorTable(0, img.gpuHandle);
+			uGCmdList->SetGraphicsRootDescriptorTable(0, gb0.gpuHandle);
 
 			uGCmdList->IASetVertexBuffers(0, 0, nullptr);
 			uGCmdList->IASetIndexBuffer(nullptr);
@@ -632,6 +678,28 @@ void DeferApp::BuildRootSignature()
 
 		Ubpa::DXRenderer::Instance().RegisterRootSignature("screen", &rootSigDesc);
 	}
+	{ // defer lighting
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+
+		// Root parameter can be a table, root descriptor or root constants.
+		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+
+		// Perfomance TIP: Order from most frequent to least frequent.
+		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[1].InitAsConstantBufferView(0);
+		slotRootParameter[2].InitAsConstantBufferView(1);
+		slotRootParameter[3].InitAsConstantBufferView(2);
+
+		auto staticSamplers = GetStaticSamplers();
+
+		// A root signature is an array of root parameters.
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Ubpa::DXRenderer::Instance().RegisterRootSignature("defer lighting", &rootSigDesc);
+	}
 }
 
 void DeferApp::BuildDescriptorHeaps()
@@ -652,6 +720,10 @@ void DeferApp::BuildShadersAndInputLayout()
 		L"..\\data\\shaders\\01_defer\\Geometry.hlsl", nullptr, "VS", "vs_5_0");
 	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("geometryPS",
 		L"..\\data\\shaders\\01_defer\\Geometry.hlsl", nullptr, "PS", "ps_5_0");
+	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("deferLightingVS",
+		L"..\\data\\shaders\\01_defer\\deferLighting.hlsl", nullptr, "VS", "vs_5_0");
+	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("deferLightingPS",
+		L"..\\data\\shaders\\01_defer\\deferLighting.hlsl", nullptr, "PS", "ps_5_0");
 	
     mInputLayout =
     {
@@ -726,6 +798,16 @@ void DeferApp::BuildPSOs()
 		mDepthStencilFormat
 	);
 	Ubpa::DXRenderer::Instance().RegisterPSO("geometry", &geometryPsoDesc);
+
+	auto deferLightingPsoDesc = Ubpa::DX12::Desc::PSO::Basic(
+		Ubpa::DXRenderer::Instance().GetRootSignature("defer lighting"),
+		nullptr, 0,
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("deferLightingVS"),
+		Ubpa::DXRenderer::Instance().GetShaderByteCode("deferLightingPS"),
+		mBackBufferFormat,
+		DXGI_FORMAT_UNKNOWN
+	);
+	Ubpa::DXRenderer::Instance().RegisterPSO("defer lighting", &deferLightingPsoDesc);
 }
 
 void DeferApp::BuildFrameResources()

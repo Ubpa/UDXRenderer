@@ -1,17 +1,14 @@
-Texture2D    image : register(t0);
-SamplerState gsamLinear  : register(s0);
+Texture2D    gImage        : register(t0);
+SamplerState gSampleLinear : register(s0);
 
-// Constant data that varies per frame.
-cbuffer cbPerObject : register(b0)
+static const float2 gTexCoords[6] =
 {
-    float4x4 gWorld;
-    float4x4 gTexTransform;
-};
-
-struct VertexIn
-{
-	float2 Pos     : POSITION;
-	float2 TexC    : TEXCOORD;
+    float2(0.0f, 1.0f),
+    float2(0.0f, 0.0f),
+    float2(1.0f, 0.0f),
+    float2(0.0f, 1.0f),
+    float2(1.0f, 0.0f),
+    float2(1.0f, 1.0f)
 };
 
 struct VertexOut
@@ -20,18 +17,20 @@ struct VertexOut
 	float2 TexC    : TEXCOORD;
 };
 
-VertexOut VS(VertexIn vin)
+VertexOut VS(uint vid : SV_VertexID)
 {
 	VertexOut vout;
-	
-	vout.PosH = float4(vin.Pos, 0.0f, 0.0f);
-	vout.TexC = vin.TexC;
-	
+
+    vout.TexC = gTexCoords[vid];
+
+    // Quad covering screen in NDC space.
+    vout.PosH = float4(2.0f*vout.TexC.x - 1.0f, 1.0f - 2.0f*vout.TexC.y, 0.0f, 1.0f);
+
     return vout;
 }
 
 float4 PS(VertexOut pin) : SV_Target
 {
-    return image.Sample(gsamLinear, pin.TexC);
+    return gImage.Sample(gSampleLinear, pin.TexC);
 }
 

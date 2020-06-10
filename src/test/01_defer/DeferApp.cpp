@@ -378,7 +378,7 @@ void DeferApp::Draw(const GameTimer& gt)
 			std::array rts{ gb0.cpuHandle,gb1.cpuHandle,gb2.cpuHandle };
 			uGCmdList->OMSetRenderTargets(rts.size(), rts.data(), false, &ds.cpuHandle);
 
-			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("default"));
+			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("geometry"));
 
 			auto passCB = mCurrFrameResource
 				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("gbPass constants")
@@ -628,17 +628,23 @@ void DeferApp::UpdateMainPassCB(const GameTimer& gt)
 
 void DeferApp::LoadTextures()
 {
-	Ubpa::DXRenderer::Instance().RegisterDDSTextureFromFile(
+	std::array<std::wstring_view, 3> ironTextures{
+		L"../data/textures/iron/albedo.dds",
+		L"../data/textures/iron/roughness.dds",
+		L"../data/textures/iron/metalness.dds"
+	};
+
+	Ubpa::DXRenderer::Instance().RegisterDDSTextureArrayFromFile(
 		Ubpa::DXRenderer::Instance().GetUpload(),
-		"woodCrateTex",
-		L"../data/textures/WoodCrate01.dds");
+		"iron",
+		ironTextures.data(), ironTextures.size());
 }
 
 void DeferApp::BuildRootSignature()
 {
-	{ // default
+	{ // geometry
 		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
 		// Root parameter can be a table, root descriptor or root constants.
 		CD3DX12_ROOT_PARAMETER slotRootParameter[4];
@@ -656,7 +662,7 @@ void DeferApp::BuildRootSignature()
 			(UINT)staticSamplers.size(), staticSamplers.data(),
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-		Ubpa::DXRenderer::Instance().RegisterRootSignature("default", &rootSigDesc);
+		Ubpa::DXRenderer::Instance().RegisterRootSignature("geometry", &rootSigDesc);
 	}
 
 	{ // screen
@@ -768,16 +774,6 @@ void DeferApp::BuildShapeGeometry()
 
 void DeferApp::BuildPSOs()
 {
-	auto opaquePsoDesc = Ubpa::DX12::Desc::PSO::Basic(
-		Ubpa::DXRenderer::Instance().GetRootSignature("default"),
-		mInputLayout.data(), (UINT)mInputLayout.size(),
-		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS"),
-		Ubpa::DXRenderer::Instance().GetShaderByteCode("opaquePS"),
-		mBackBufferFormat,
-		mDepthStencilFormat
-	);
-	Ubpa::DXRenderer::Instance().RegisterPSO("opaque", &opaquePsoDesc);
-
 	auto screenPsoDesc = Ubpa::DX12::Desc::PSO::Basic(
 		Ubpa::DXRenderer::Instance().GetRootSignature("screen"),
 		nullptr, 0,
@@ -789,7 +785,7 @@ void DeferApp::BuildPSOs()
 	Ubpa::DXRenderer::Instance().RegisterPSO("screen", &screenPsoDesc);
 
 	auto geometryPsoDesc = Ubpa::DX12::Desc::PSO::MRT(
-		Ubpa::DXRenderer::Instance().GetRootSignature("default"),
+		Ubpa::DXRenderer::Instance().GetRootSignature("geometry"),
 		mInputLayout.data(), (UINT)mInputLayout.size(),
 		Ubpa::DXRenderer::Instance().GetShaderByteCode("geometryVS"),
 		Ubpa::DXRenderer::Instance().GetShaderByteCode("geometryPS"),
@@ -845,9 +841,9 @@ void DeferApp::BuildFrameResources()
 void DeferApp::BuildMaterials()
 {
 	auto woodCrate = std::make_unique<Material>();
-	woodCrate->Name = "woodCrate";
+	woodCrate->Name = "iron";
 	woodCrate->MatCBIndex = 0;
-	woodCrate->DiffuseSrvGpuHandle = Ubpa::DXRenderer::Instance().GetTextureSrvGpuHandle("woodCrateTex");
+	woodCrate->DiffuseSrvGpuHandle = Ubpa::DXRenderer::Instance().GetTextureSrvGpuHandle("iron");
 	woodCrate->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	woodCrate->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
 	woodCrate->Roughness = 0.2f;

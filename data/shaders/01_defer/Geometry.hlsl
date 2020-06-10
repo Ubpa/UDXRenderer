@@ -20,7 +20,10 @@
 // Include structures and functions for lighting.
 #include "LightingUtil.hlsl"
 
-Texture2D    gDiffuseMap : register(t0);
+Texture2D    gAlbedoMap    : register(t0);
+Texture2D    gRoughnessMap : register(t1);
+Texture2D    gMetalnessMap : register(t2);
+
 SamplerState gsamLinear  : register(s0);
 
 
@@ -112,33 +115,13 @@ PixelOut PS(VertexOut pin)
 {
 	PixelOut pout;
 	
-    float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.TexC) * gDiffuseAlbedo;
-
-    // // Interpolating normal can unnormalize it, so renormalize it.
-    // pin.NormalW = normalize(pin.NormalW);
-
-    // // Vector from point being lit to eye. 
-    // float3 toEyeW = normalize(gEyePosW - pin.PosW);
-
-    // // Light terms.
-    // float4 ambient = gAmbientLight*diffuseAlbedo;
-
-    // const float shininess = 1.0f - gRoughness;
-    // Material mat = { diffuseAlbedo, gFresnelR0, shininess };
-    // float3 shadowFactor = 1.0f;
-    // float4 directLight = ComputeLighting(gLights, mat, pin.PosW,
-        // pin.NormalW, toEyeW, shadowFactor);
-
-    // float4 litColor = ambient + directLight;
-
-    // // Common convention to take alpha from diffuse material.
-    // litColor.a = diffuseAlbedo.a;
-
-    // return litColor;
+    float3 albedo = gAlbedoMap.Sample(gsamLinear, pin.TexC).xyz;
+    float roughness = gRoughnessMap.Sample(gsamLinear, pin.TexC).x;
+    float metalness = gMetalnessMap.Sample(gsamLinear, pin.TexC).x;
 	
-	pout.gbuffer0 = float4(diffuseAlbedo.xyz, 0.7f);
-	pout.gbuffer1 = float4(pin.NormalW, 0.5f);
-	pout.gbuffer2 = float4(pin.PosW, 0.5f);
+	pout.gbuffer0 = float4(albedo, roughness);
+	pout.gbuffer1 = float4(normalize(pin.NormalW), metalness);
+	pout.gbuffer2 = float4(pin.PosW, 0.0f);
 	
 	return pout;
 }

@@ -8,8 +8,8 @@ using namespace Ubpa;
 struct DXRenderer::Impl {
     struct Texture {
         std::vector<ID3D12Resource*> resources;
-        DX12::DescriptorHeapAllocation allocationSRV;
-        DX12::DescriptorHeapAllocation allocationRTV;
+        UDX12::DescriptorHeapAllocation allocationSRV;
+        UDX12::DescriptorHeapAllocation allocationRTV;
     };
 
     bool isInit{ false };
@@ -18,7 +18,7 @@ struct DXRenderer::Impl {
 
     std::unordered_map<std::string, Texture> textureMap;
 
-    std::unordered_map<std::string, DX12::MeshGeometry> meshGeoMap;
+    std::unordered_map<std::string, UDX12::MeshGeometry> meshGeoMap;
     std::unordered_map<std::string, ID3DBlob*> shaderByteCodeMap;
     std::unordered_map<std::string, ID3D12RootSignature*> rootSignatureMap;
     std::unordered_map<std::string, ID3D12PipelineState*> PSOMap;
@@ -48,9 +48,9 @@ void DXRenderer::Release() {
     assert(pImpl->isInit);
 
     for (auto& [name, tex] : pImpl->textureMap) {
-        DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Free(std::move(tex.allocationSRV));
+        UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Free(std::move(tex.allocationSRV));
         if(!tex.allocationRTV.IsNull())
-            DX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Free(std::move(tex.allocationRTV));
+            UDX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Free(std::move(tex.allocationRTV));
         for (auto rsrc : tex.resources)
             rsrc->Release();
     }
@@ -90,7 +90,7 @@ DXRenderer& DXRenderer::RegisterDDSTextureArrayFromFile(DirectX::ResourceUploadB
     Impl::Texture tex;
     tex.resources.resize(num);
 
-    tex.allocationSRV = DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(num);
+    tex.allocationSRV = UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(num);
 
     for (UINT i = 0; i < num; i++) {
         bool isCubeMap;
@@ -106,8 +106,8 @@ DXRenderer& DXRenderer::RegisterDDSTextureArrayFromFile(DirectX::ResourceUploadB
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc =
             isCubeMap ?
-            DX12::Desc::SRV::TexCube(tex.resources[i]->GetDesc().Format)
-            : DX12::Desc::SRV::Tex2D(tex.resources[i]->GetDesc().Format);
+            UDX12::Desc::SRV::TexCube(tex.resources[i]->GetDesc().Format)
+            : UDX12::Desc::SRV::Tex2D(tex.resources[i]->GetDesc().Format);
 
         pImpl->device->CreateShaderResourceView(tex.resources[i], &srvDesc, tex.allocationSRV.GetCpuHandle(i));
     }
@@ -124,11 +124,11 @@ D3D12_GPU_DESCRIPTOR_HANDLE DXRenderer::GetTextureSrvGpuHandle(const std::string
     return pImpl->textureMap.find(name)->second.allocationSRV.GetGpuHandle(index);
 }
 
-DX12::DescriptorHeapAllocation& DXRenderer::GetTextureRtvs(const std::string& name) const {
+UDX12::DescriptorHeapAllocation& DXRenderer::GetTextureRtvs(const std::string& name) const {
     return pImpl->textureMap.find(name)->second.allocationRTV;
 }
 
-DX12::MeshGeometry& DXRenderer::RegisterStaticMeshGeometry(
+UDX12::MeshGeometry& DXRenderer::RegisterStaticMeshGeometry(
     DirectX::ResourceUploadBatch& upload, std::string name,
     const void* vb_data, UINT vb_count, UINT vb_stride,
     const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format)
@@ -139,7 +139,7 @@ DX12::MeshGeometry& DXRenderer::RegisterStaticMeshGeometry(
     return meshGeo;
 }
 
-DX12::MeshGeometry& DXRenderer::RegisterDynamicMeshGeometry(
+UDX12::MeshGeometry& DXRenderer::RegisterDynamicMeshGeometry(
     std::string name,
     const void* vb_data, UINT vb_count, UINT vb_stride,
     const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format)
@@ -150,7 +150,7 @@ DX12::MeshGeometry& DXRenderer::RegisterDynamicMeshGeometry(
     return meshGeo;
 }
 
-DX12::MeshGeometry& DXRenderer::GetMeshGeometry(const std::string& name) const {
+UDX12::MeshGeometry& DXRenderer::GetMeshGeometry(const std::string& name) const {
     return pImpl->meshGeoMap.find(name)->second;
 }
 
@@ -161,7 +161,7 @@ ID3DBlob* DXRenderer::RegisterShaderByteCode(
     const std::string& entrypoint,
     const std::string& target)
 {
-    auto shader = DX12::Util::CompileShader(filename, defines, entrypoint, target);
+    auto shader = UDX12::Util::CompileShader(filename, defines, entrypoint, target);
     pImpl->shaderByteCodeMap.emplace(std::move(name), shader);
     return shader;
 }
@@ -174,8 +174,8 @@ DXRenderer& DXRenderer::RegisterRenderTexture2D(std::string name, UINT width, UI
     Impl::Texture tex;
     tex.resources.resize(1);
 
-    tex.allocationSRV = DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
-    tex.allocationRTV = DX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Allocate(1);
+    tex.allocationSRV = UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
+    tex.allocationRTV = UDX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Allocate(1);
 
     // create resource
     D3D12_RESOURCE_DESC texDesc;
@@ -199,7 +199,7 @@ DXRenderer& DXRenderer::RegisterRenderTexture2D(std::string name, UINT width, UI
     // create SRV
     pImpl->device->CreateShaderResourceView(
         tex.resources[0],
-        &DX12::Desc::SRV::Tex2D(format),
+        &UDX12::Desc::SRV::Tex2D(format),
         tex.allocationSRV.GetCpuHandle());
 
     // create RTVs
@@ -220,8 +220,8 @@ DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, D
     Impl::Texture tex;
     tex.resources.resize(1);
 
-    tex.allocationSRV = DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
-    tex.allocationRTV = DX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Allocate(6);
+    tex.allocationSRV = UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
+    tex.allocationRTV = UDX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Allocate(6);
 
     // create resource
     D3D12_RESOURCE_DESC texDesc;
@@ -247,7 +247,7 @@ DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, D
     // create SRV
     pImpl->device->CreateShaderResourceView(
         tex.resources[0],
-        &DX12::Desc::SRV::TexCube(format),
+        &UDX12::Desc::SRV::TexCube(format),
         tex.allocationSRV.GetCpuHandle());
 
     // create RTVs

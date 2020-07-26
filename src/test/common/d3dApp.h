@@ -127,9 +127,8 @@ protected:
 	int mClientWidth = 800;
 	int mClientHeight = 600;
 
-    // Ubpa::DX12
-    Ubpa::DX12::Device uDevice;
-    Ubpa::DX12::CmdQueue uCmdQueue;
-    Ubpa::DX12::GCmdList uGCmdList;
+    // Ubpa::UDX12
+    Ubpa::UDX12::Device uDevice;
+    Ubpa::UDX12::CmdQueue uCmdQueue;
+    Ubpa::UDX12::GCmdList uGCmdList;
 };
-

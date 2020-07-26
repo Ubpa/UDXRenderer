@@ -1,10 +1,9 @@
 Ubpa_AddTarget(
-  MODE
-   STATIC
+  MODE STATIC
   SOURCE
-    "${PROJECT_SOURCE_DIR}/include/UDXRenderer" 
+    "${PROJECT_SOURCE_DIR}/include/UDXRenderer"
   INC
-    include
+    "${PROJECT_SOURCE_DIR}/include" 
   LIB
     Ubpa::UFG_DX12
 )

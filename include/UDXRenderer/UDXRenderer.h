@@ -23,12 +23,12 @@ namespace Ubpa {
 		DXRenderer& RegisterDDSTextureArrayFromFile(DirectX::ResourceUploadBatch& upload,
 			std::string name, const std::wstring_view* filenameArr, UINT num);
 
-		DX12::MeshGeometry& RegisterStaticMeshGeometry(
+		UDX12::MeshGeometry& RegisterStaticMeshGeometry(
 			DirectX::ResourceUploadBatch& upload, std::string name,
 			const void* vb_data, UINT vb_count, UINT vb_stride,
 			const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format);
 
-		DX12::MeshGeometry& RegisterDynamicMeshGeometry(
+		UDX12::MeshGeometry& RegisterDynamicMeshGeometry(
 			std::string name,
 			const void* vb_data, UINT vb_count, UINT vb_stride,
 			const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format);
@@ -62,9 +62,9 @@ namespace Ubpa {
 		D3D12_CPU_DESCRIPTOR_HANDLE GetTextureSrvCpuHandle(const std::string& name, UINT index = 0) const;
 		D3D12_GPU_DESCRIPTOR_HANDLE GetTextureSrvGpuHandle(const std::string& name, UINT index = 0) const;
 
-		DX12::DescriptorHeapAllocation& GetTextureRtvs(const std::string& name) const;
+		UDX12::DescriptorHeapAllocation& GetTextureRtvs(const std::string& name) const;
 
-		DX12::MeshGeometry& GetMeshGeometry(const std::string& name) const;
+		UDX12::MeshGeometry& GetMeshGeometry(const std::string& name) const;
 
 		ID3DBlob* GetShaderByteCode(const std::string& name) const;
 

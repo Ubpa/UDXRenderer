@@ -76,7 +76,7 @@ struct RenderItem
 	UINT ObjCBIndex = -1;
 
 	Material* Mat = nullptr;
-	Ubpa::DX12::MeshGeometry* Geo = nullptr;
+	Ubpa::UDX12::MeshGeometry* Geo = nullptr;
 	//std::string Geo;
 
     // Primitive topology.
@@ -130,8 +130,8 @@ private:
 private:
 
     //std::vector<std::unique_ptr<FrameResource>> mFrameResources;
-	std::vector<std::unique_ptr<Ubpa::DX12::FrameResource>> mFrameResources;
-	Ubpa::DX12::FrameResource* mCurrFrameResource = nullptr;
+	std::vector<std::unique_ptr<Ubpa::UDX12::FrameResource>> mFrameResources;
+	Ubpa::UDX12::FrameResource* mCurrFrameResource = nullptr;
     int mCurrFrameResourceIndex = 0;
 
     //UINT mCbvSrvDescriptorSize = 0;
@@ -139,9 +139,9 @@ private:
     //ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 
 	//ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
-	Ubpa::DX12::DescriptorHeapAllocation mSrvDescriptorHeap;
+	Ubpa::UDX12::DescriptorHeapAllocation mSrvDescriptorHeap;
 
-	//std::unordered_map<std::string, std::unique_ptr<Ubpa::DX12::MeshGeometry>> mGeometries;
+	//std::unordered_map<std::string, std::unique_ptr<Ubpa::UDX12::MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	//std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
@@ -169,10 +169,10 @@ private:
     POINT mLastMousePos;
 
 	// frame graph
-	//Ubpa::DX12::FG::RsrcMngr fgRsrcMngr;
-	Ubpa::DX12::FG::Executor fgExecutor;
-	Ubpa::FG::Compiler fgCompiler;
-	Ubpa::FG::FrameGraph fg;
+	//Ubpa::UFG::DX12::RsrcMngr fgRsrcMngr;
+	Ubpa::UFG::DX12::Executor fgExecutor;
+	Ubpa::UFG::Compiler fgCompiler;
+	Ubpa::UFG::FrameGraph fg;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -193,7 +193,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 		Ubpa::DXRenderer::Instance().Release();
 		return rst;
     }
-    catch(Ubpa::DX12::Util::Exception& e)
+    catch(Ubpa::UDX12::Util::Exception& e)
     {
         MessageBox(nullptr, e.ToString().c_str(), L"HR Failed", MB_OK);
         return 0;
@@ -202,7 +202,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 }
 
 DeferApp::DeferApp(HINSTANCE hInstance)
-    : D3DApp(hInstance)
+	: D3DApp(hInstance), fg{"frame graph"}
 {
 }
 
@@ -219,7 +219,7 @@ bool DeferApp::Initialize()
 
 	Ubpa::DXRenderer::Instance().Init(uDevice.raw.Get());
 
-	Ubpa::DX12::DescriptorHeapMngr::Instance().Init(uDevice.raw.Get(), 1024, 1024, 1024, 1024, 1024);
+	Ubpa::UDX12::DescriptorHeapMngr::Instance().Init(uDevice.raw.Get(), 1024, 1024, 1024, 1024, 1024);
 
 	//fgRsrcMngr.Init(uGCmdList, uDevice);
 
@@ -263,7 +263,7 @@ void DeferApp::OnResize()
     XMStoreFloat4x4(&mProj, P);
 
 	auto clearFGRsrcMngr = [](void* rsrcMngr) {
-		reinterpret_cast<Ubpa::DX12::FG::RsrcMngr*>(rsrcMngr)->Clear();
+		reinterpret_cast<Ubpa::UFG::DX12::RsrcMngr*>(rsrcMngr)->Clear();
 	};
 	for (auto& frsrc : mFrameResources)
 		frsrc->DelayUpdateResource("FrameGraphRsrcMngr", clearFGRsrcMngr);
@@ -307,18 +307,18 @@ void DeferApp::Draw(const GameTimer& gt)
     // Reusing the command list reuses memory.
     ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, Ubpa::DXRenderer::Instance().GetPSO("opaque")));
 
-	uGCmdList.SetDescriptorHeaps(Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
+	uGCmdList.SetDescriptorHeaps(Ubpa::UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
 	uGCmdList->RSSetViewports(1, &mScreenViewport);
 	uGCmdList->RSSetScissorRects(1, &mScissorRect);
 
 	fg.Clear();
-	auto fgRsrcMngr = mCurrFrameResource->GetResource<Ubpa::DX12::FG::RsrcMngr>("FrameGraphRsrcMngr");
+	auto fgRsrcMngr = mCurrFrameResource->GetResource<Ubpa::UFG::DX12::RsrcMngr>("FrameGraphRsrcMngr");
 	fgRsrcMngr->NewFrame();
 	fgExecutor.NewFrame();;
 
-	auto backbuffer = fg.AddResourceNode("Back Buffer");
-	auto depthstencil = fg.AddResourceNode("Depth Stencil");
-	auto pass = fg.AddPassNode(
+	auto backbuffer = fg.RegisterResourceNode("Back Buffer");
+	auto depthstencil = fg.RegisterResourceNode("Depth Stencil");
+	auto pass = fg.RegisterPassNode(
 		"Pass",
 		{},
 		{ backbuffer,depthstencil }
@@ -334,12 +334,12 @@ void DeferApp::Draw(const GameTimer& gt)
 		.RegisterImportedRsrc(backbuffer, { CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT })
 		.RegisterImportedRsrc(depthstencil, { mDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE })
 		.RegisterPassRsrcs(pass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
-			Ubpa::DX12::FG::RsrcImplDesc_RTV_Null{})
+			Ubpa::UFG::DX12::RsrcImplDesc_RTV_Null{})
 		.RegisterPassRsrcs(pass, depthstencil, D3D12_RESOURCE_STATE_DEPTH_WRITE, dsvDesc);
 
 	fgExecutor.RegisterPassFunc(
 		pass,
-		[&](const Ubpa::DX12::FG::PassRsrcs& rsrcs) {
+		[&](const Ubpa::UFG::DX12::PassRsrcs& rsrcs) {
 			// Clear the back buffer and depth buffer.
 			uGCmdList.ClearRenderTargetView(rsrcs.find(backbuffer)->second.cpuHandle, Colors::LightSteelBlue);
 			uGCmdList.ClearDepthStencilView(rsrcs.find(depthstencil)->second.cpuHandle);
@@ -352,7 +352,7 @@ void DeferApp::Draw(const GameTimer& gt)
 			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("default"));
 
 			auto passCB = mCurrFrameResource
-				->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
+				->GetResource<Ubpa::UDX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
 				->GetResource();
 			uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
@@ -483,7 +483,7 @@ void DeferApp::AnimateMaterials(const GameTimer& gt)
 void DeferApp::UpdateObjectCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>");
+		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>");
 	for(auto& e : mAllRitems)
 	{
 		// Only update the cbuffer data if the constants have changed.  
@@ -508,7 +508,7 @@ void DeferApp::UpdateObjectCBs(const GameTimer& gt)
 void DeferApp::UpdateMaterialCBs(const GameTimer& gt)
 {
 	auto currMaterialCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>");
+		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>");
 	for(auto& e : mMaterials)
 	{
 		// Only update the cbuffer data if the constants have changed.  If the cbuffer
@@ -564,7 +564,7 @@ void DeferApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
 
 	auto currPassCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>");
+		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>");
 	currPassCB->Set(0, mMainPassCB);
 }
 
@@ -638,7 +638,7 @@ void DeferApp::BuildDescriptorHeaps()
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(uDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap)));*/
 
-	//mSrvDescriptorHeap = Ubpa::DX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
+	//mSrvDescriptorHeap = Ubpa::UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Allocate(1);
 
 	////
 	//// Fill out the heap with actual descriptors.
@@ -653,8 +653,8 @@ void DeferApp::BuildDescriptorHeaps()
 
 void DeferApp::BuildShadersAndInputLayout()
 {
-	//mShaders["standardVS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
-	//mShaders["opaquePS"] = Ubpa::DX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
+	//mShaders["standardVS"] = Ubpa::UDX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
+	//mShaders["opaquePS"] = Ubpa::UDX12::Util::CompileShader(L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "PS", "ps_5_0");
 	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("standardVS",
 		L"..\\data\\shaders\\00_crate\\Default.hlsl", nullptr, "VS", "vs_5_0");
 	Ubpa::DXRenderer::Instance().RegisterShaderByteCode("opaquePS",
@@ -673,7 +673,7 @@ void DeferApp::BuildShapeGeometry()
     GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
  
-	Ubpa::DX12::SubmeshGeometry boxSubmesh;
+	Ubpa::UDX12::SubmeshGeometry boxSubmesh;
 	boxSubmesh.IndexCount = (UINT)box.Indices32.size();
 	boxSubmesh.StartIndexLocation = 0;
 	boxSubmesh.BaseVertexLocation = 0;
@@ -693,7 +693,7 @@ void DeferApp::BuildShapeGeometry()
     const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
     const UINT ibByteSize = (UINT)indices.size()  * sizeof(std::uint16_t);
 
-	/*auto geo = std::make_unique<Ubpa::DX12::MeshGeometry>();
+	/*auto geo = std::make_unique<Ubpa::UDX12::MeshGeometry>();
 	geo->Name = "boxGeo";
 
 	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
@@ -702,10 +702,10 @@ void DeferApp::BuildShapeGeometry()
 	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
 	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
-	geo->VertexBufferGPU = Ubpa::DX12::Util::CreateDefaultBuffer(uDevice.raw.Get(),
+	geo->VertexBufferGPU = Ubpa::UDX12::Util::CreateDefaultBuffer(uDevice.raw.Get(),
 		uGCmdList.raw.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
 
-	geo->IndexBufferGPU = Ubpa::DX12::Util::CreateDefaultBuffer(uDevice.raw.Get(),
+	geo->IndexBufferGPU = Ubpa::UDX12::Util::CreateDefaultBuffer(uDevice.raw.Get(),
 		uGCmdList.raw.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
 
 	geo->VertexByteStride = sizeof(Vertex);
@@ -759,7 +759,7 @@ void DeferApp::BuildPSOs()
 	//opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	//opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	//opaquePsoDesc.DSVFormat = mDepthStencilFormat;
-	auto opaquePsoDesc = Ubpa::DX12::Desc::PSO::Basic(
+	auto opaquePsoDesc = Ubpa::UDX12::Desc::PSO::Basic(
 		Ubpa::DXRenderer::Instance().GetRootSignature("default"),
 		mInputLayout.data(), (UINT)mInputLayout.size(),
 		Ubpa::DXRenderer::Instance().GetShaderByteCode("standardVS"),
@@ -775,7 +775,7 @@ void DeferApp::BuildFrameResources()
 {
     for(int i = 0; i < gNumFrameResources; ++i)
     {
-		auto fr = std::make_unique<Ubpa::DX12::FrameResource>(mFence.Get());
+		auto fr = std::make_unique<Ubpa::UDX12::FrameResource>(mFence.Get());
 
 		ID3D12CommandAllocator* allocator;
 		ThrowIfFailed(uDevice->CreateCommandAllocator(
@@ -787,15 +787,15 @@ void DeferApp::BuildFrameResources()
 		});
 
 		fr->RegisterResource("ArrayUploadBuffer<PassConstants>",
-			new Ubpa::DX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
+			new Ubpa::UDX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
 
 		fr->RegisterResource("ArrayUploadBuffer<MaterialConstants>",
-			new Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>{ uDevice.raw.Get(), mMaterials.size(), true });
+			new Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>{ uDevice.raw.Get(), mMaterials.size(), true });
 
 		fr->RegisterResource("ArrayUploadBuffer<ObjectConstants>",
-			new Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
+			new Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
 
-		auto fgRsrcMngr = new Ubpa::DX12::FG::RsrcMngr;
+		auto fgRsrcMngr = new Ubpa::UFG::DX12::RsrcMngr;
 		fgRsrcMngr->Init(uGCmdList, uDevice);
 		fr->RegisterResource("FrameGraphRsrcMngr", fgRsrcMngr);
 
@@ -803,10 +803,10 @@ void DeferApp::BuildFrameResources()
 
 		// We cannot update a cbuffer until the GPU is done processing the commands
 		// that reference it.  So each frame needs their own cbuffers.
-		// std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<FrameConstants>> FrameCB = nullptr;
-		/*std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<PassConstants>> PassCB = nullptr;
-		std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>> MaterialCB = nullptr;
-		std::unique_ptr<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>> ObjectCB = nullptr;
+		// std::unique_ptr<Ubpa::UDX12::ArrayUploadBuffer<FrameConstants>> FrameCB = nullptr;
+		/*std::unique_ptr<Ubpa::UDX12::ArrayUploadBuffer<PassConstants>> PassCB = nullptr;
+		std::unique_ptr<Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>> MaterialCB = nullptr;
+		std::unique_ptr<Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 
         mFrameResources.push_back(std::make_unique<FrameResource>(uDevice.raw.Get(),
             1, (UINT)mAllRitems.size(), (UINT)mMaterials.size()));*/
@@ -845,14 +845,14 @@ void DeferApp::BuildRenderItems()
 
 void DeferApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
-    UINT objCBByteSize = Ubpa::DX12::Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-    UINT matCBByteSize = Ubpa::DX12::Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+    UINT objCBByteSize = Ubpa::UDX12::Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+    UINT matCBByteSize = Ubpa::UDX12::Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
  
 	auto objectCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>")
+		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>")
 		->GetResource();
 	auto matCB = mCurrFrameResource
-		->GetResource<Ubpa::DX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>")
+		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>")
 		->GetResource();
 
     // For each render item...

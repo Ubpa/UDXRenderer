@@ -4,10 +4,11 @@
 #include <iostream>
 
 using namespace Ubpa;
+using namespace std;
 
 struct DXRenderer::Impl {
     struct Texture {
-        std::vector<ID3D12Resource*> resources;
+        vector<ID3D12Resource*> resources;
         UDX12::DescriptorHeapAllocation allocationSRV;
         UDX12::DescriptorHeapAllocation allocationRTV;
     };
@@ -16,12 +17,12 @@ struct DXRenderer::Impl {
     ID3D12Device* device{ nullptr };
     DirectX::ResourceUploadBatch* upload;
 
-    std::unordered_map<std::string, Texture> textureMap;
+    unordered_map<string, Texture> textureMap;
 
-    std::unordered_map<std::string, UDX12::MeshGeometry> meshGeoMap;
-    std::unordered_map<std::string, ID3DBlob*> shaderByteCodeMap;
-    std::unordered_map<std::string, ID3D12RootSignature*> rootSignatureMap;
-    std::unordered_map<std::string, ID3D12PipelineState*> PSOMap;
+    unordered_map<string, UDX12::MeshGeometry> meshGeoMap;
+    unordered_map<string, ID3DBlob*> shaderByteCodeMap;
+    unordered_map<string, ID3D12RootSignature*> rootSignatureMap;
+    unordered_map<string, ID3D12PipelineState*> PSOMap;
 };
 
 DXRenderer::DXRenderer()
@@ -48,9 +49,9 @@ void DXRenderer::Release() {
     assert(pImpl->isInit);
 
     for (auto& [name, tex] : pImpl->textureMap) {
-        UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Free(std::move(tex.allocationSRV));
+        UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->Free(move(tex.allocationSRV));
         if(!tex.allocationRTV.IsNull())
-            UDX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Free(std::move(tex.allocationRTV));
+            UDX12::DescriptorHeapMngr::Instance().GetRTVCpuDH()->Free(move(tex.allocationRTV));
         for (auto rsrc : tex.resources)
             rsrc->Release();
     }
@@ -78,14 +79,14 @@ DirectX::ResourceUploadBatch& DXRenderer::GetUpload() const {
 
 DXRenderer& DXRenderer::RegisterDDSTextureFromFile(
     DirectX::ResourceUploadBatch& upload,
-    std::string name,
-    std::wstring_view filename)
+    string name,
+    wstring_view filename)
 {
-    return RegisterDDSTextureArrayFromFile(upload, name, &filename, 1);
+    return RegisterDDSTextureArrayFromFile(upload, move(name), &filename, 1);
 }
 
 DXRenderer& DXRenderer::RegisterDDSTextureArrayFromFile(DirectX::ResourceUploadBatch& upload,
-    std::string name, const std::wstring_view* filenameArr, UINT num)
+    string name, const wstring_view* filenameArr, UINT num)
 {
     Impl::Texture tex;
     tex.resources.resize(num);
@@ -112,65 +113,70 @@ DXRenderer& DXRenderer::RegisterDDSTextureArrayFromFile(DirectX::ResourceUploadB
         pImpl->device->CreateShaderResourceView(tex.resources[i], &srvDesc, tex.allocationSRV.GetCpuHandle(i));
     }
 
-    pImpl->textureMap.emplace(std::move(name), std::move(tex));
+    pImpl->textureMap.emplace(move(name), move(tex));
 
     return *this;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DXRenderer::GetTextureSrvCpuHandle(const std::string& name, UINT index) const {
+D3D12_CPU_DESCRIPTOR_HANDLE DXRenderer::GetTextureSrvCpuHandle(const string& name, UINT index) const {
     return pImpl->textureMap.find(name)->second.allocationSRV.GetCpuHandle(index);
 }
-D3D12_GPU_DESCRIPTOR_HANDLE DXRenderer::GetTextureSrvGpuHandle(const std::string& name, UINT index) const {
+D3D12_GPU_DESCRIPTOR_HANDLE DXRenderer::GetTextureSrvGpuHandle(const string& name, UINT index) const {
     return pImpl->textureMap.find(name)->second.allocationSRV.GetGpuHandle(index);
 }
 
-UDX12::DescriptorHeapAllocation& DXRenderer::GetTextureRtvs(const std::string& name) const {
+UDX12::DescriptorHeapAllocation& DXRenderer::GetTextureRtvs(const string& name) const {
     return pImpl->textureMap.find(name)->second.allocationRTV;
 }
 
 UDX12::MeshGeometry& DXRenderer::RegisterStaticMeshGeometry(
-    DirectX::ResourceUploadBatch& upload, std::string name,
+    DirectX::ResourceUploadBatch& upload, string name,
     const void* vb_data, UINT vb_count, UINT vb_stride,
     const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format)
 {
     auto& meshGeo = pImpl->meshGeoMap[name];
-    meshGeo.Name = std::move(name);
-    meshGeo.InitBuffer(pImpl->device, upload, vb_data, vb_count, vb_stride, ib_data, ib_count, ib_format);
+    meshGeo.Name = move(name);
+    meshGeo.InitBuffer(pImpl->device, upload,
+        vb_data, vb_count, vb_stride,
+        ib_data, ib_count, ib_format
+    );
     return meshGeo;
 }
 
 UDX12::MeshGeometry& DXRenderer::RegisterDynamicMeshGeometry(
-    std::string name,
+    string name,
     const void* vb_data, UINT vb_count, UINT vb_stride,
     const void* ib_data, UINT ib_count, DXGI_FORMAT ib_format)
 {
     auto& meshGeo = pImpl->meshGeoMap[name];
-    meshGeo.Name = std::move(name);
-    meshGeo.InitBuffer(pImpl->device, vb_data, vb_count, vb_stride, ib_data, ib_count, ib_format);
+    meshGeo.Name = move(name);
+    meshGeo.InitBuffer(pImpl->device,
+        vb_data, vb_count, vb_stride,
+        ib_data, ib_count, ib_format);
     return meshGeo;
 }
 
-UDX12::MeshGeometry& DXRenderer::GetMeshGeometry(const std::string& name) const {
+UDX12::MeshGeometry& DXRenderer::GetMeshGeometry(const string& name) const {
     return pImpl->meshGeoMap.find(name)->second;
 }
 
 ID3DBlob* DXRenderer::RegisterShaderByteCode(
-    std::string name,
-    const std::wstring& filename,
+    string name,
+    const wstring& filename,
     const D3D_SHADER_MACRO* defines,
-    const std::string& entrypoint,
-    const std::string& target)
+    const string& entrypoint,
+    const string& target)
 {
     auto shader = UDX12::Util::CompileShader(filename, defines, entrypoint, target);
-    pImpl->shaderByteCodeMap.emplace(std::move(name), shader);
+    pImpl->shaderByteCodeMap.emplace(move(name), shader);
     return shader;
 }
 
-ID3DBlob* DXRenderer::GetShaderByteCode(const std::string& name) const {
+ID3DBlob* DXRenderer::GetShaderByteCode(const string& name) const {
     return pImpl->shaderByteCodeMap.find(name)->second;
 }
 
-DXRenderer& DXRenderer::RegisterRenderTexture2D(std::string name, UINT width, UINT height, DXGI_FORMAT format) {
+DXRenderer& DXRenderer::RegisterRenderTexture2D(string name, UINT width, UINT height, DXGI_FORMAT format) {
     Impl::Texture tex;
     tex.resources.resize(1);
 
@@ -211,12 +217,12 @@ DXRenderer& DXRenderer::RegisterRenderTexture2D(std::string name, UINT width, UI
     rtvDesc.Texture2D.PlaneSlice = 0; // ?
     pImpl->device->CreateRenderTargetView(tex.resources[0], &rtvDesc, tex.allocationRTV.GetCpuHandle());
 
-    pImpl->textureMap.emplace(std::move(name), std::move(tex));
+    pImpl->textureMap.emplace(move(name), move(tex));
 
     return *this;
 }
 
-DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, DXGI_FORMAT format) {
+DXRenderer& DXRenderer::RegisterRenderTextureCube(string name, UINT size, DXGI_FORMAT format) {
     Impl::Texture tex;
     tex.resources.resize(1);
 
@@ -264,13 +270,13 @@ DXRenderer& DXRenderer::RegisterRenderTextureCube(std::string name, UINT size, D
         pImpl->device->CreateRenderTargetView(tex.resources[0], &rtvDesc, tex.allocationRTV.GetCpuHandle(i));
     }
 
-    pImpl->textureMap.emplace(std::move(name), std::move(tex));
+    pImpl->textureMap.emplace(move(name), move(tex));
 
     return *this;
 }
 
 DXRenderer& DXRenderer::RegisterRootSignature(
-    std::string name,
+    string name,
     const D3D12_ROOT_SIGNATURE_DESC* desc
 )
 {
@@ -296,27 +302,27 @@ DXRenderer& DXRenderer::RegisterRootSignature(
         serializedRootSig->GetBufferSize(),
         IID_PPV_ARGS(&rootSig)));
 
-    pImpl->rootSignatureMap.emplace(std::move(name), rootSig);
+    pImpl->rootSignatureMap.emplace(move(name), rootSig);
 
     serializedRootSig->Release();
 
     return *this;
 }
 
-ID3D12RootSignature* DXRenderer::GetRootSignature(const std::string& name) const {
+ID3D12RootSignature* DXRenderer::GetRootSignature(const string& name) const {
     return pImpl->rootSignatureMap.find(name)->second;
 }
 
 DXRenderer& DXRenderer::RegisterPSO(
-    std::string name,
+    string name,
     const D3D12_GRAPHICS_PIPELINE_STATE_DESC* desc)
 {
     ID3D12PipelineState* pso;
     pImpl->device->CreateGraphicsPipelineState(desc, IID_PPV_ARGS(&pso));
-    pImpl->PSOMap.emplace(std::move(name), pso);
+    pImpl->PSOMap.emplace(move(name), pso);
     return *this;
 }
 
-ID3D12PipelineState* DXRenderer::GetPSO(const std::string& name) const {
+ID3D12PipelineState* DXRenderer::GetPSO(const string& name) const {
     return pImpl->PSOMap.find(name)->second;
 }

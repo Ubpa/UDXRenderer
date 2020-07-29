@@ -15,7 +15,7 @@ struct DXRenderer::Impl {
 
     bool isInit{ false };
     ID3D12Device* device{ nullptr };
-    DirectX::ResourceUploadBatch* upload;
+    DirectX::ResourceUploadBatch* upload{ nullptr };
 
     unordered_map<string, Texture> textureMap;
 
@@ -23,6 +23,58 @@ struct DXRenderer::Impl {
     unordered_map<string, ID3DBlob*> shaderByteCodeMap;
     unordered_map<string, ID3D12RootSignature*> rootSignatureMap;
     unordered_map<string, ID3D12PipelineState*> PSOMap;
+
+    const CD3DX12_STATIC_SAMPLER_DESC pointWrap{
+        0,                               // shaderRegister
+        D3D12_FILTER_MIN_MAG_MIP_POINT,  // filter
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP  // addressW
+    };
+
+    const CD3DX12_STATIC_SAMPLER_DESC pointClamp{
+        1,                                // shaderRegister
+        D3D12_FILTER_MIN_MAG_MIP_POINT,   // filter
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP  // addressW
+    };
+
+    const CD3DX12_STATIC_SAMPLER_DESC linearWrap{
+        2,                               // shaderRegister
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP  // addressW
+    };
+
+    const CD3DX12_STATIC_SAMPLER_DESC linearClamp{
+        3,                                // shaderRegister
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,  // filter
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP  // addressW
+    };
+
+    const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap{
+        4,                               // shaderRegister
+        D3D12_FILTER_ANISOTROPIC,        // filter
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressW
+        0.0f,                            // mipLODBias
+        8                                // maxAnisotropy
+    };
+
+    const CD3DX12_STATIC_SAMPLER_DESC anisotropicClamp{
+        5,                                // shaderRegister
+        D3D12_FILTER_ANISOTROPIC,         // filter
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressW
+        0.0f,                             // mipLODBias
+        8                                 // maxAnisotropy
+    };
 };
 
 DXRenderer::DXRenderer()
@@ -325,4 +377,12 @@ DXRenderer& DXRenderer::RegisterPSO(
 
 ID3D12PipelineState* DXRenderer::GetPSO(const string& name) const {
     return pImpl->PSOMap.find(name)->second;
+}
+
+std::array<CD3DX12_STATIC_SAMPLER_DESC, 6> DXRenderer::GetStaticSamplers() const {
+	return {
+		pImpl->pointWrap, pImpl->pointClamp,
+        pImpl->linearWrap, pImpl->linearClamp,
+        pImpl->anisotropicWrap, pImpl->anisotropicClamp
+    };
 }

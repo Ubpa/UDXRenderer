@@ -14,6 +14,7 @@
 *.pdf
 
 *.mp4
+*.xmind
 
 # directories
 resources/

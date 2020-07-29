@@ -7,6 +7,7 @@
 #include "../common/MathHelper.h"
 #include <UDX12/UploadBuffer.h>
 #include "../common/GeometryGenerator.h"
+#include <memory>
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -129,10 +130,9 @@ private:
 
 private:
 
-    //std::vector<std::unique_ptr<FrameResource>> mFrameResources;
-	std::vector<std::unique_ptr<Ubpa::UDX12::FrameResource>> mFrameResources;
-	Ubpa::UDX12::FrameResource* mCurrFrameResource = nullptr;
-    int mCurrFrameResourceIndex = 0;
+	std::vector<std::unique_ptr<Ubpa::UDX12::FrameRsrcMngr>> mFrameResources;
+	Ubpa::UDX12::FrameRsrcMngr* mCurrFrameRsrcMngr = nullptr;
+    int mCurrFrameRsrcMngrIndex = 0;
 
     //UINT mCbvSrvDescriptorSize = 0;
 
@@ -169,8 +169,8 @@ private:
     POINT mLastMousePos;
 
 	// frame graph
-	//Ubpa::UFG::DX12::RsrcMngr fgRsrcMngr;
-	Ubpa::UFG::DX12::Executor fgExecutor;
+	//Ubpa::UDX12::FG::RsrcMngr fgRsrcMngr;
+	Ubpa::UDX12::FG::Executor fgExecutor;
 	Ubpa::UFG::Compiler fgCompiler;
 	Ubpa::UFG::FrameGraph fg;
 };
@@ -262,8 +262,8 @@ void DeferApp::OnResize()
     XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f*MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
     XMStoreFloat4x4(&mProj, P);
 
-	auto clearFGRsrcMngr = [](void* rsrcMngr) {
-		reinterpret_cast<Ubpa::UFG::DX12::RsrcMngr*>(rsrcMngr)->Clear();
+	auto clearFGRsrcMngr = [](std::shared_ptr<Ubpa::UDX12::FG::RsrcMngr> rsrcMngr) {
+		rsrcMngr->Clear();
 	};
 	for (auto& frsrc : mFrameResources)
 		frsrc->DelayUpdateResource("FrameGraphRsrcMngr", clearFGRsrcMngr);
@@ -275,16 +275,16 @@ void DeferApp::Update(const GameTimer& gt)
 	UpdateCamera(gt);
 
     // Cycle through the circular frame resource array.
-    mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
-    mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
+    mCurrFrameRsrcMngrIndex = (mCurrFrameRsrcMngrIndex + 1) % gNumFrameResources;
+    mCurrFrameRsrcMngr = mFrameResources[mCurrFrameRsrcMngrIndex].get();
 
     // Has the GPU finished processing the commands of the current frame resource?
     // If not, wait until the GPU has completed commands up to this fence point.
-	mCurrFrameResource->Wait();
-    /*if(mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
+	mCurrFrameRsrcMngr->Wait();
+    /*if(mCurrFrameRsrcMngr->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameRsrcMngr->Fence)
     {
         HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
-        ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
+        ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameRsrcMngr->Fence, eventHandle));
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
     }*/
@@ -297,7 +297,7 @@ void DeferApp::Update(const GameTimer& gt)
 
 void DeferApp::Draw(const GameTimer& gt)
 {
-	auto cmdListAlloc = mCurrFrameResource->GetResource<ID3D12CommandAllocator>("CommandAllocator");
+	auto cmdListAlloc = mCurrFrameRsrcMngr->GetResource<Microsoft::WRL::ComPtr<ID3D12CommandAllocator>>("CommandAllocator");
 
     // Reuse the memory associated with command recording.
     // We can only reset when the associated command lists have finished execution on the GPU.
@@ -305,14 +305,14 @@ void DeferApp::Draw(const GameTimer& gt)
 
     // A command list can be reset after it has been added to the command queue via ExecuteCommandList.
     // Reusing the command list reuses memory.
-    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc, Ubpa::DXRenderer::Instance().GetPSO("opaque")));
+    ThrowIfFailed(uGCmdList->Reset(cmdListAlloc.Get(), Ubpa::DXRenderer::Instance().GetPSO("opaque")));
 
 	uGCmdList.SetDescriptorHeaps(Ubpa::UDX12::DescriptorHeapMngr::Instance().GetCSUGpuDH()->GetDescriptorHeap());
 	uGCmdList->RSSetViewports(1, &mScreenViewport);
 	uGCmdList->RSSetScissorRects(1, &mScissorRect);
 
 	fg.Clear();
-	auto fgRsrcMngr = mCurrFrameResource->GetResource<Ubpa::UFG::DX12::RsrcMngr>("FrameGraphRsrcMngr");
+	auto fgRsrcMngr = mCurrFrameRsrcMngr->GetResource<std::shared_ptr<Ubpa::UDX12::FG::RsrcMngr>>("FrameGraphRsrcMngr");
 	fgRsrcMngr->NewFrame();
 	fgExecutor.NewFrame();;
 
@@ -334,12 +334,12 @@ void DeferApp::Draw(const GameTimer& gt)
 		.RegisterImportedRsrc(backbuffer, { CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT })
 		.RegisterImportedRsrc(depthstencil, { mDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE })
 		.RegisterPassRsrcs(pass, backbuffer, D3D12_RESOURCE_STATE_RENDER_TARGET,
-			Ubpa::UFG::DX12::RsrcImplDesc_RTV_Null{})
+			Ubpa::UDX12::FG::RsrcImplDesc_RTV_Null{})
 		.RegisterPassRsrcs(pass, depthstencil, D3D12_RESOURCE_STATE_DEPTH_WRITE, dsvDesc);
 
 	fgExecutor.RegisterPassFunc(
 		pass,
-		[&](const Ubpa::UFG::DX12::PassRsrcs& rsrcs) {
+		[&](const Ubpa::UDX12::FG::PassRsrcs& rsrcs) {
 			// Clear the back buffer and depth buffer.
 			uGCmdList.ClearRenderTargetView(rsrcs.find(backbuffer)->second.cpuHandle, Colors::LightSteelBlue);
 			uGCmdList.ClearDepthStencilView(rsrcs.find(depthstencil)->second.cpuHandle);
@@ -351,9 +351,9 @@ void DeferApp::Draw(const GameTimer& gt)
 
 			uGCmdList->SetGraphicsRootSignature(Ubpa::DXRenderer::Instance().GetRootSignature("default"));
 
-			auto passCB = mCurrFrameResource
+			auto passCB = mCurrFrameRsrcMngr
 				->GetResource<Ubpa::UDX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>")
-				->GetResource();
+				.GetResource();
 			uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
 			DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
@@ -378,7 +378,7 @@ void DeferApp::Draw(const GameTimer& gt)
 
 	//uGCmdList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	//auto passCB = mCurrFrameResource->PassCB->GetResource();
+	//auto passCB = mCurrFrameRsrcMngr->PassCB->GetResource();
 	//uGCmdList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
  //   DrawRenderItems(uGCmdList.raw.Get(), mOpaqueRitems);
@@ -401,13 +401,13 @@ void DeferApp::Draw(const GameTimer& gt)
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
     //// Advance the fence value to mark commands up to this fence point.
-    //mCurrFrameResource->Fence = ++mCurrentFence;
+    //mCurrFrameRsrcMngr->Fence = ++mCurrentFence;
 
     //// Add an instruction to the command queue to set a new fence point. 
     //// Because we are on the GPU timeline, the new fence point won't be 
     //// set until the GPU finishes processing all the commands prior to this Signal().
     //uCmdQueue->Signal(mFence.Get(), mCurrentFence);
-	mCurrFrameResource->Signal(uCmdQueue.raw.Get(), ++mCurrentFence);
+	mCurrFrameRsrcMngr->Signal(uCmdQueue.raw.Get(), ++mCurrentFence);
 }
 
 void DeferApp::OnMouseDown(WPARAM btnState, int x, int y)
@@ -482,7 +482,7 @@ void DeferApp::AnimateMaterials(const GameTimer& gt)
 
 void DeferApp::UpdateObjectCBs(const GameTimer& gt)
 {
-	auto currObjectCB = mCurrFrameResource
+	auto& currObjectCB = mCurrFrameRsrcMngr
 		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>");
 	for(auto& e : mAllRitems)
 	{
@@ -497,7 +497,7 @@ void DeferApp::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 
-			currObjectCB->Set(e->ObjCBIndex, objConstants);
+			currObjectCB.Set(e->ObjCBIndex, objConstants);
 
 			// Next FrameResource need to be updated too.
 			e->NumFramesDirty--;
@@ -507,7 +507,7 @@ void DeferApp::UpdateObjectCBs(const GameTimer& gt)
 
 void DeferApp::UpdateMaterialCBs(const GameTimer& gt)
 {
-	auto currMaterialCB = mCurrFrameResource
+	auto& currMaterialCB = mCurrFrameRsrcMngr
 		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>");
 	for(auto& e : mMaterials)
 	{
@@ -524,7 +524,7 @@ void DeferApp::UpdateMaterialCBs(const GameTimer& gt)
 			matConstants.Roughness = mat->Roughness;
 			XMStoreFloat4x4(&matConstants.MatTransform, XMMatrixTranspose(matTransform));
 
-			currMaterialCB->Set(mat->MatCBIndex, matConstants);
+			currMaterialCB.Set(mat->MatCBIndex, matConstants);
 
 			// Next FrameResource need to be updated too.
 			mat->NumFramesDirty--;
@@ -563,9 +563,9 @@ void DeferApp::UpdateMainPassCB(const GameTimer& gt)
 	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
 
-	auto currPassCB = mCurrFrameResource
+	auto& currPassCB = mCurrFrameRsrcMngr
 		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<PassConstants>>("ArrayUploadBuffer<PassConstants>");
-	currPassCB->Set(0, mMainPassCB);
+	currPassCB.Set(0, mMainPassCB);
 }
 
 void DeferApp::LoadTextures()
@@ -775,29 +775,27 @@ void DeferApp::BuildFrameResources()
 {
     for(int i = 0; i < gNumFrameResources; ++i)
     {
-		auto fr = std::make_unique<Ubpa::UDX12::FrameResource>(mFence.Get());
+		auto fr = std::make_unique<Ubpa::UDX12::FrameRsrcMngr>(mCurrentFence, mFence.Get());
 
-		ID3D12CommandAllocator* allocator;
+		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
 		ThrowIfFailed(uDevice->CreateCommandAllocator(
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
 			IID_PPV_ARGS(&allocator)));
 
-		fr->RegisterResource("CommandAllocator", allocator, [](void* allocator) {
-			reinterpret_cast<ID3D12CommandAllocator*>(allocator)->Release();
-		});
+		fr->RegisterResource("CommandAllocator", std::move(allocator));
 
 		fr->RegisterResource("ArrayUploadBuffer<PassConstants>",
-			new Ubpa::UDX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
+			Ubpa::UDX12::ArrayUploadBuffer<PassConstants>{ uDevice.raw.Get(), 1, true });
 
 		fr->RegisterResource("ArrayUploadBuffer<MaterialConstants>",
-			new Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>{ uDevice.raw.Get(), mMaterials.size(), true });
+			Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>{ uDevice.raw.Get(), mMaterials.size(), true });
 
 		fr->RegisterResource("ArrayUploadBuffer<ObjectConstants>",
-			new Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
+			Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>{ uDevice.raw.Get(), mAllRitems.size(), true });
 
-		auto fgRsrcMngr = new Ubpa::UFG::DX12::RsrcMngr;
+		auto fgRsrcMngr = std::make_shared<Ubpa::UDX12::FG::RsrcMngr>();
 		fgRsrcMngr->Init(uGCmdList, uDevice);
-		fr->RegisterResource("FrameGraphRsrcMngr", fgRsrcMngr);
+		fr->RegisterResource("FrameGraphRsrcMngr", std::move(fgRsrcMngr));
 
 		mFrameResources.emplace_back(std::move(fr));
 
@@ -848,12 +846,12 @@ void DeferApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::ve
     UINT objCBByteSize = Ubpa::UDX12::Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
     UINT matCBByteSize = Ubpa::UDX12::Util::CalcConstantBufferByteSize(sizeof(MaterialConstants));
  
-	auto objectCB = mCurrFrameResource
+	auto objectCB = mCurrFrameRsrcMngr
 		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<ObjectConstants>>("ArrayUploadBuffer<ObjectConstants>")
-		->GetResource();
-	auto matCB = mCurrFrameResource
+		.GetResource();
+	auto matCB = mCurrFrameRsrcMngr
 		->GetResource<Ubpa::UDX12::ArrayUploadBuffer<MaterialConstants>>("ArrayUploadBuffer<MaterialConstants>")
-		->GetResource();
+		.GetResource();
 
     // For each render item...
     for(size_t i = 0; i < ritems.size(); ++i)

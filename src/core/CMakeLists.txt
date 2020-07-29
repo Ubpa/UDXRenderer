@@ -5,5 +5,5 @@ Ubpa_AddTarget(
   INC
     "${PROJECT_SOURCE_DIR}/include" 
   LIB
-    Ubpa::UFG_DX12
+    Ubpa::UDX12_core
 )
